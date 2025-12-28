@@ -1,0 +1,42 @@
+{
+  "0": {
+    "type": "fridge",
+    "x": 180,
+    "y": 0,
+    "z": 0,
+    "width": 60,
+    "height": 200
+  },
+  "1": {
+    "type": "sink_cabinet",
+    "x": 120,
+    "y": 0,
+    "z": 0,
+    "width": 60,
+    "height": 85
+  },
+  "2": {
+    "type": "dishwasher",
+    "x": 60,
+    "y": 0,
+    "z": 0,
+    "width": 60,
+    "height": 85
+  },
+  "3": {
+    "type": "stove_cabinet",
+    "x": 0,
+    "y": 0,
+    "z": 0,
+    "width": 60,
+    "height": 85
+  },
+  "4": {
+    "type": "pantry",
+    "x": 240,
+    "y": 0,
+    "z": 0,
+    "width": 45,
+    "height": 200
+  }
+}

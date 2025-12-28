@@ -1,0 +1,98 @@
+{
+    "room": {
+        "width": 400,
+        "length": 300,
+        "height": 260,
+        "slopes": [
+            {
+                "wall": "left",
+                "start_height": 120,
+                "angle": 45
+            }
+        ],
+        "windows": [
+            {
+                "wall": "back",
+                "x": 260,
+                "y": 100,
+                "width": 80,
+                "height": 100
+            }
+        ],
+        "doors": [
+            {
+                "wall": "right",
+                "x": 100,
+                "y": 0,
+                "width": 90,
+                "height": 210
+            }
+        ],
+        "utilities": [
+            {
+                "type": "water",
+                "x": 100,
+                "y": 50,
+                "z": 0,
+                "radius": 3
+            },
+            {
+                "type": "waste",
+                "x": 100,
+                "y": 20,
+                "z": 0,
+                "radius": 6
+            },
+            {
+                "type": "gas",
+                "x": 300,
+                "y": 50,
+                "z": 0,
+                "radius": 2
+            }
+        ]
+    },
+    "wishlist": [
+        {
+            "type": "fridge",
+            "width": 60,
+            "height": 215,
+            "depth": 60
+        },
+        {
+            "type": "sink_cabinet",
+            "width": 60,
+            "depth": 60
+        },
+        {
+            "type": "dishwasher",
+            "width": 60,
+            "depth": 60
+        },
+        {
+            "type": "stove_cabinet",
+            "width": 60,
+            "depth": 60
+        },
+        {
+            "type": "pantry",
+            "width": 45,
+            "height": 215,
+            "depth": 60
+        }
+    ],
+    "wall_wishlist": [
+        {
+            "type": "hood",
+            "width": 60,
+            "height": 60,
+            "depth": 50
+        },
+        {
+            "type": "wall_cabinet",
+            "width": 60,
+            "height": 70,
+            "depth": 35
+        }
+    ]
+}
