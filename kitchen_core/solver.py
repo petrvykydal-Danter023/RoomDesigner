@@ -114,6 +114,181 @@ class StorageValidator:
         print("="*50 + "\n")
 
 
+class WishlistExpander:
+    """
+    Smart Fill - Automatic wishlist completion.
+    
+    Takes minimal user requirements and expands to a complete
+    kitchen that satisfies all workflow and storage rules.
+    
+    SAFETY VALVE: Never adds items that would exceed room width.
+    """
+    
+    # Mandatory zones - at least one item from each
+    ZONE_REQUIREMENTS = {
+        'storage': ['fridge', 'pantry'],
+        'wet': ['sink_cabinet'],
+        'hot': ['stove_cabinet'],
+    }
+    
+    # Items that should auto-add based on other items
+    AUTO_ADD_RULES = {
+        'hood': {'requires': ['stove_cabinet'], 'is_wall': True},
+    }
+    
+    # Default item specifications
+    DEFAULT_ITEMS = {
+        'fridge': {'width': 60, 'height': 215},
+        'pantry': {'width': 45, 'height': 200},
+        'sink_cabinet': {'width': 60, 'height': 85},
+        'dishwasher': {'width': 60, 'height': 85},
+        'stove_cabinet': {'width': 60, 'height': 85},
+        'drawer_cabinet': {'width': 60, 'height': 85},
+        'hood': {'width': 60, 'height': 40},
+        'wall_cabinet': {'width': 60, 'height': 70},
+    }
+    
+    # Buffer to prevent edge-case solver failures
+    SAFETY_BUFFER = 30  # cm
+    
+    def __init__(self, room: Room):
+        self.room = room
+        self.room_width = int(room.width)
+        self.room_area_m2 = (room.width * room.length) / 10000
+    
+    def expand(self, user_wishlist: List[Dict], user_wall_wishlist: List[Dict] = None) -> tuple:
+        """
+        Expand minimal wishlist to complete kitchen.
+        
+        Returns: (expanded_wishlist, expanded_wall_wishlist)
+        """
+        user_wall_wishlist = user_wall_wishlist or []
+        
+        expanded = [dict(item) for item in user_wishlist]  # Copy
+        expanded_wall = [dict(item) for item in user_wall_wishlist]
+        
+        print("\n[WishlistExpander] Smart Fill...")
+        print(f"  Input: {len(user_wishlist)} base, {len(user_wall_wishlist)} wall items")
+        
+        # Track what types we have
+        base_types = {item['type'] for item in expanded}
+        wall_types = {item['type'] for item in expanded_wall}
+        
+        # Step 1: Ensure mandatory zones have items
+        expanded = self._ensure_zones(expanded, base_types)
+        base_types = {item['type'] for item in expanded}
+        
+        # Step 2: Auto-add dependent items (e.g., hood for stove)
+        expanded_wall = self._ensure_auto_items(expanded, expanded_wall, base_types, wall_types)
+        
+        # Step 3: Fill to meet Storage Index (with SAFETY VALVE)
+        expanded = self._fill_storage_safe(expanded)
+        
+        print(f"  Output: {len(expanded)} base, {len(expanded_wall)} wall items")
+        
+        return expanded, expanded_wall
+    
+    def _ensure_zones(self, wishlist: List[Dict], existing_types: set) -> List[Dict]:
+        """Ensure each mandatory zone has at least one item."""
+        for zone, valid_items in self.ZONE_REQUIREMENTS.items():
+            if not any(t in existing_types for t in valid_items):
+                # Add default item for this zone
+                default_type = valid_items[0]
+                default_spec = self.DEFAULT_ITEMS.get(default_type, {'width': 60})
+                
+                print(f"  [AUTO] Adding {default_type} for {zone} zone")
+                wishlist.append({
+                    'type': default_type,
+                    'width': default_spec.get('width', 60),
+                    'height': default_spec.get('height', 85),
+                    'auto': True
+                })
+        
+        return wishlist
+    
+    def _ensure_auto_items(self, base_list: List[Dict], wall_list: List[Dict],
+                           base_types: set, wall_types: set) -> List[Dict]:
+        """Add items that depend on other items (e.g., hood requires stove)."""
+        for item_type, rule in self.AUTO_ADD_RULES.items():
+            # Check if required items are present
+            required = rule.get('requires', [])
+            if all(r in base_types for r in required):
+                # Check if auto-item already exists
+                target_types = wall_types if rule.get('is_wall') else base_types
+                if item_type not in target_types:
+                    spec = self.DEFAULT_ITEMS.get(item_type, {'width': 60})
+                    print(f"  [AUTO] Adding {item_type} (requires {required})")
+                    
+                    new_item = {
+                        'type': item_type,
+                        'width': spec.get('width', 60),
+                        'height': spec.get('height', 40),
+                        'auto': True
+                    }
+                    
+                    if rule.get('is_wall'):
+                        wall_list.append(new_item)
+                    # else would append to base_list
+        
+        return wall_list
+    
+    def _fill_storage_safe(self, wishlist: List[Dict]) -> List[Dict]:
+        """
+        Fill to meet Storage Index, WITH SAFETY VALVE.
+        
+        Never exceeds: room_width - SAFETY_BUFFER
+        """
+        # Calculate current width
+        current_width = sum(item.get('width', 60) for item in wishlist)
+        max_width = self.room_width - self.SAFETY_BUFFER
+        
+        # Calculate target (Storage Index)
+        target_m = max(self.room_area_m2 * 0.5, 3.0)  # Min 3m
+        target_width = target_m * 100  # Convert to cm
+        
+        # Calculate deficit
+        deficit = target_width - current_width
+        
+        print(f"  Storage: current={current_width}cm, target={target_width:.0f}cm, max={max_width}cm")
+        
+        # SAFETY VALVE: Can we add anything?
+        available_space = max_width - current_width
+        
+        if deficit <= 0:
+            print(f"  [OK] Storage Index already met")
+            return wishlist
+        
+        if available_space < 30:
+            print(f"  [SAFETY] No room for more cabinets (only {available_space}cm available)")
+            return wishlist
+        
+        # Fill with drawer cabinets
+        filler_width = 60
+        items_to_add = min(
+            int(deficit / filler_width),  # Items needed for target
+            int(available_space / filler_width)  # Items that fit (SAFETY)
+        )
+        
+        if items_to_add > 0:
+            print(f"  [FILL] Adding {items_to_add} x drawer_cabinet (60cm each)")
+            for _ in range(items_to_add):
+                wishlist.append({
+                    'type': 'drawer_cabinet',
+                    'width': filler_width,
+                    'height': 85,
+                    'auto': True
+                })
+        
+        # Final check
+        final_width = sum(item.get('width', 60) for item in wishlist)
+        remaining_deficit = target_width - final_width
+        
+        if remaining_deficit > 0:
+            print(f"  [WARNING] Still {remaining_deficit:.0f}cm short of Storage Index (room too small)")
+        
+        return wishlist
+
+
 class WorkflowSolver:
     """
     Pro Workflow Zoning - Professional Kitchen Ergonomics.
@@ -269,18 +444,69 @@ class WorkflowSolver:
         for z in zones:
             print(f"    {z['type'].upper():10} {z['x']:4}-{z['x']+z['width']:<4} ({z['width']}cm)")
         
-        # Build skeleton
+        # Build volumes by expanding zones into actual items from wishlist
         volumes = []
+        
+        # Map item types to zones
+        zone_item_map = {
+            'storage': ['fridge', 'pantry', 'oven_tower'],
+            'wet': ['sink_cabinet', 'dishwasher'],
+            'hot': ['stove_cabinet'],
+            'prep': ['drawer_cabinet'],
+            'landing': ['drawer_cabinet'],
+            'secondary': ['drawer_cabinet', 'coffee_station', 'wine_rack'],
+        }
+        
         for z in zones:
-            vol = {
-                'x': z['x'],
-                'width': z['width'],
-                'function': z['type'],
-                'metadata': {'zone_type': z['type']}
-            }
-            if 'content' in z:
-                vol['metadata']['content'] = z['content']
-            volumes.append(vol)
+            zone_type = z['type']
+            zone_x = z['x']
+            zone_w = z['width']
+            
+            # Get items that belong to this zone
+            zone_items = [item for item in wishlist 
+                         if item['type'] in zone_item_map.get(zone_type, [])]
+            
+            if zone_items:
+                # Place actual items from wishlist
+                item_x = zone_x
+                for item in zone_items:
+                    item_w = item.get('width', 60)
+                    item_h = item.get('height', 85)
+                    item_type = item['type']
+                    
+                    # Detect monolith (tall units)
+                    is_monolith = item_type in ['fridge', 'pantry', 'oven_tower', 'pull_out_pantry'] or item_h > 150
+                    
+                    if item_x + item_w <= zone_x + zone_w + 5:  # Slight tolerance
+                        volumes.append({
+                            'x': item_x,
+                            'width': item_w,
+                            'function': item_type,  # Actual item type!
+                            'metadata': {
+                                'zone_type': zone_type,
+                                'height': item_h,
+                                'is_monolith': is_monolith
+                            }
+                        })
+                        item_x += item_w
+                
+                # Fill remaining zone space with default
+                remaining = zone_x + zone_w - item_x
+                if remaining >= 20:
+                    volumes.append({
+                        'x': item_x,
+                        'width': remaining,
+                        'function': 'drawer_cabinet',
+                        'metadata': {'zone_type': zone_type, 'auto_fill': True}
+                    })
+            else:
+                # No specific items for this zone - use zone type as function
+                volumes.append({
+                    'x': zone_x,
+                    'width': zone_w,
+                    'function': zone_type,
+                    'metadata': {'zone_type': zone_type}
+                })
         
         return {
             'workflow_sequence': sequence,
@@ -288,7 +514,8 @@ class WorkflowSolver:
             'volumes': volumes,
             'prep_width': prep_w,
             'secondary_width': secondary_w,
-            'storage_side': storage_side
+            'storage_side': storage_side,
+            'wishlist': wishlist  # Pass through for reference
         }
 
 
@@ -428,10 +655,57 @@ class KitchenSolver:
         
         # === SOLVE ARM A (Back Wall - Main Workbench) ===
         # Contains: Sink, Cooktop, DW, prep cabinets
-        arm_a_zones = self.create_zones_from_wishlist(base_items)
-        arm_a_skeleton = self._solve_zones_in_range(
-            arm_a_zones, corner_size, corner_size + arm_a_length, wall_wishlist
-        )
+        # === SOLVE ARM A (Back Wall - Main Workbench) ===
+        # Contains: Sink, Cooktop, DW, prep cabinets
+        
+        # We need to place base_items into the available space on Arm A
+        # Space available:
+        arm_a_start = corner_size
+        arm_a_end = corner_size + arm_a_length
+        current_x = arm_a_start
+        
+        volumes = []
+        
+        # Simply place items sequentially for now (basic strategy)
+        # TODO: Use WorkflowSolver logic here for true ergonomics on Arm A
+        
+        # Sort items by priority/flow if needed, or just take them as is
+        # Workflow: Sink -> Prep -> Cook is ideal.
+        
+        # Let's try to order them: Sink, DW, Prep, Stove
+        ordered_items = []
+        
+        # 1. Sink & DW
+        sink_items = [i for i in base_items if i['type'] in ['sink_cabinet', 'dishwasher', 'wet']]
+        other_items = [i for i in base_items if i not in sink_items]
+        
+        ordered_items.extend(sink_items)
+        ordered_items.extend(other_items)
+        
+        for item in ordered_items:
+            w = item.get('width', 60)
+            if current_x + w <= arm_a_end:
+                volumes.append({
+                    'x': current_x,
+                    'width': w,
+                    'function': item['type'],
+                    'metadata': {'height': item.get('height', 85)}
+                })
+                current_x += w
+            else:
+                print(f"  [WARNING] Item {item['type']} ({w}cm) does not fit on Arm A")
+        
+        # Fill remaining space with filler/prep
+        remaining = arm_a_end - current_x
+        if remaining >= 20:
+             volumes.append({
+                'x': current_x,
+                'width': remaining,
+                'function': 'drawer_cabinet', 
+                'metadata': {'height': 85, 'auto_fill': True}
+            })
+            
+        arm_a_skeleton = {'volumes': volumes, 'wall_wishlist': wall_wishlist}
         
         if arm_a_skeleton is None:
             return None

@@ -4,7 +4,7 @@ import sys
 import os
 from datetime import datetime
 from kitchen_core.geometry import Room
-from kitchen_core.solver import KitchenSolver, StorageValidator, WorkflowSolver
+from kitchen_core.solver import KitchenSolver, StorageValidator, WorkflowSolver, WishlistExpander
 from kitchen_core.generator import OBJGenerator
 from kitchen_core.skins.premium import PremiumSkin
 from kitchen_core.ghost_chef import GhostChef
@@ -37,6 +37,10 @@ def main():
     
     if args.mode == 'premium':
         # === V3 PREMIUM PIPELINE ===
+        
+        # === WISHLIST EXPANDER (Smart Fill) ===
+        expander = WishlistExpander(room)
+        wishlist, wall_wishlist = expander.expand(wishlist, wall_wishlist)
         
         # Auto-detect shape if needed
         actual_shape = room.shape

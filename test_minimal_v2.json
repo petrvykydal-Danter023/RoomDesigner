@@ -1,0 +1,35 @@
+{
+  "room": {
+    "width": 400,
+    "length": 300,
+    "height": 260,
+    "shape": "I",
+    "slopes": [],
+    "utilities": [
+      {
+        "type": "water",
+        "x": 180,
+        "y": 50,
+        "z": 0
+      }
+    ],
+    "windows": [],
+    "doors": []
+  },
+  "wishlist": [
+    {
+      "type": "fridge",
+      "width": 60,
+      "height": 215
+    },
+    {
+      "type": "sink_cabinet",
+      "width": 60
+    },
+    {
+      "type": "dishwasher",
+      "width": 60
+    }
+  ],
+  "wall_wishlist": []
+}

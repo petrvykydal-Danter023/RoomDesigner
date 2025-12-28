@@ -72,127 +72,44 @@ class PremiumSkin(Skin):
                 'axis': axis  # 'X' or 'Z' - tells generator which orientation
             })
         
-        # === PROCESS WORKBENCH (Base Line) - handles both Arm A (X) and Arm B (Z) ===
+        # === PROCESS WORKBENCH (Base Line) - Direct item type pass-through ===
+        # WorkflowSolver now provides actual item types (sink_cabinet, dishwasher, fridge, etc.)
         for i, vol in enumerate(workbench_vols):
             x = vol.get('x', 0)
             z = vol.get('z', 0)
             w = vol['width']
             func = vol['function']
             meta = vol.get('metadata', {})
-            axis = meta.get('axis', 'X')  # Check if this is Arm B
+            axis = meta.get('axis', 'X')
+            height = meta.get('height', 85)
             
-            # For Arm B items, use z as position
-            if axis == 'Z':
-                # Arm B base cabinet - rotated orientation
-                items.append({
-                    'type': 'drawer_cabinet',
-                    'x': 0,
-                    'z': z,
-                    'width': w,
-                    'height': 85,
-                    'depth': 60,
-                    'axis': 'Z'
-                })
-                continue
+            # Determine if end panel is needed
+            is_end = None
+            if x == leftmost_x:
+                is_end = 'left'
+            elif x + w >= rightmost_end - 1:
+                is_end = 'right'
             
-            current_x = x
-            remaining_w = w
+            # Build item with actual function type
+            item = {
+                'type': func,
+                'x': x,
+                'z': z,
+                'width': w,
+                'height': height,
+                'depth': 60,
+                'axis': axis
+            }
             
-            # Is this the first or last in workbench?
-            is_first = (i == 0)
-            is_last = (i == len(workbench_vols) - 1)
+            # Add layer heights for drawer-type cabinets
+            if func in ['drawer_cabinet', 'prep', 'landing', 'secondary', 'base_cabinet']:
+                item['layer_heights'] = layer_heights
             
-            # === ZONE-SPECIFIC LOGIC ===
+            # Add end panel info
+            if is_end:
+                item['is_end'] = is_end
             
-            if func == 'wet':
-                # Sink (80) + DW (60)
-                if remaining_w >= 80:
-                    is_end = 'left' if is_first and current_x == leftmost_x else None
-                    items.append({
-                        'type': 'sink_cabinet',
-                        'x': current_x,
-                        'width': 80,
-                        'height': 85,
-                        'depth': 60,
-                        'layer_heights': [20, 20, 45],  # False drawer + door
-                        'is_end': is_end
-                    })
-                    current_x += 80
-                    remaining_w -= 80
-                
-                if remaining_w >= 60:
-                    items.append({
-                        'type': 'dishwasher',
-                        'x': current_x,
-                        'width': 60,
-                        'height': 85,
-                        'depth': 60
-                    })
-                    current_x += 60
-                    remaining_w -= 60
-            
-            elif func == 'cooking':
-                if remaining_w >= 60:
-                    items.append({
-                        'type': 'stove_cabinet',
-                        'x': current_x,
-                        'width': 60,
-                        'height': 85,
-                        'depth': 60,
-                        'layer_heights': layer_heights
-                    })
-                    current_x += 60
-                    remaining_w -= 60
-                    
-                    # Add hood above
-                    items.append({
-                        'type': 'hood',
-                        'x': current_x - 60,
-                        'width': 60,
-                        'height': 40,
-                        'depth': 35,
-                        'y': 160
-                    })
-            
-            # === FILL REMAINING WITH LAYER-ALIGNED CABINETS ===
-            
-            while remaining_w > 0:
-                # Prefer 60cm for visual consistency
-                if remaining_w >= 60:
-                    cab_w = 60
-                elif remaining_w >= 40:
-                    cab_w = 40
-                elif remaining_w >= 30:
-                    cab_w = 30
-                elif remaining_w >= 20:
-                    cab_w = 20
-                else:
-                    # Filler
-                    items.append({
-                        'type': 'filler',
-                        'x': current_x,
-                        'width': remaining_w,
-                        'height': 85,
-                        'depth': 60
-                    })
-                    break
-                
-                # Determine end panel
-                is_end = None
-                if is_last and remaining_w - cab_w < 5:
-                    if current_x + cab_w >= rightmost_end - 1:
-                        is_end = 'right'
-                
-                items.append({
-                    'type': 'drawer_cabinet',
-                    'x': current_x,
-                    'width': cab_w,
-                    'height': 85,
-                    'depth': 60,
-                    'layer_heights': layer_heights,
-                    'is_end': is_end
-                })
-                current_x += cab_w
-                remaining_w -= cab_w
+            items.append(item)
         
         return items
+
