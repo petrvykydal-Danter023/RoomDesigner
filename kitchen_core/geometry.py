@@ -43,6 +43,9 @@ class Room:
     # Enhancements
     windows: List[Dict] = None 
     doors: List[Dict] = None
+    # L-Shape support
+    shape: str = 'I'  # 'I', 'L', 'U', 'auto'
+    wall_b_length: float = 0  # Second arm length for L/U shapes
 
     @classmethod
     def from_dict(cls, data: dict):
@@ -55,8 +58,50 @@ class Room:
             slopes=slopes,
             utilities=data.get('utilities', []),
             windows=data.get('windows', []),
-            doors=data.get('doors', [])
+            doors=data.get('doors', []),
+            shape=data.get('shape', 'I'),
+            wall_b_length=data.get('wall_b_length', 0)
         )
+
+
+@dataclass
+class CornerModule:
+    """
+    Corner module for L-shape kitchens.
+    The anchor point where two arms meet.
+    """
+    type: str  # 'blind', 'carousel', 'diagonal'
+    size: int  # 65, 87, or 90 cm
+    
+    # Standard configurations
+    BLIND = ('blind', 65)
+    CAROUSEL = ('carousel', 90)
+    DIAGONAL = ('diagonal', 87)
+    
+    @classmethod
+    def blind(cls) -> 'CornerModule':
+        """Standard 65cm blind corner cabinet."""
+        return cls('blind', 65)
+    
+    @classmethod
+    def carousel(cls) -> 'CornerModule':
+        """Premium 90cm carousel corner (lazy susan)."""
+        return cls('carousel', 90)
+    
+    @classmethod
+    def diagonal(cls) -> 'CornerModule':
+        """Modern 87cm diagonal corner."""
+        return cls('diagonal', 87)
+    
+    @property
+    def accessible_width(self) -> int:
+        """Usable worktop width at corner."""
+        if self.type == 'blind':
+            return 30  # Only front 30cm accessible
+        elif self.type == 'carousel':
+            return 60  # More accessible with lazy susan
+        else:
+            return 45  # Diagonal has moderate access
 
     def get_ceiling_height(self, x: float, z: float) -> float:
         """

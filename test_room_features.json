@@ -1,0 +1,88 @@
+{
+  "room": {
+    "width": 400,
+    "length": 350,
+    "height": 260,
+    "shape": "I",
+    "slopes": [],
+    "utilities": [
+      {
+        "type": "water",
+        "x": 150,
+        "y": 50,
+        "z": 0
+      },
+      {
+        "type": "electric",
+        "x": 280,
+        "y": 100,
+        "z": 0
+      }
+    ],
+    "windows": [
+      {
+        "x": 100,
+        "y": 90,
+        "width": 120,
+        "height": 100
+      }
+    ],
+    "doors": [
+      {
+        "x": 320,
+        "y": 0,
+        "width": 90,
+        "height": 210,
+        "type": "entry"
+      }
+    ]
+  },
+  "wishlist": [
+    {
+      "type": "fridge",
+      "width": 60,
+      "height": 215
+    },
+    {
+      "type": "pantry",
+      "width": 45,
+      "height": 200
+    },
+    {
+      "type": "sink_cabinet",
+      "width": 80
+    },
+    {
+      "type": "dishwasher",
+      "width": 60
+    },
+    {
+      "type": "stove_cabinet",
+      "width": 60
+    },
+    {
+      "type": "oven_tower",
+      "width": 60,
+      "height": 215
+    }
+  ],
+  "wall_wishlist": [
+    {
+      "type": "hood",
+      "width": 60,
+      "height": 40
+    },
+    {
+      "type": "wall_cabinet",
+      "width": 60
+    },
+    {
+      "type": "glass_cabinet",
+      "width": 60
+    },
+    {
+      "type": "microwave_cabinet",
+      "width": 60
+    }
+  ]
+}

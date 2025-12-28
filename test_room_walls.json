@@ -1,0 +1,94 @@
+{
+  "room": {
+    "width": 400,
+    "length": 350,
+    "height": 260,
+    "shape": "I",
+    "slopes": [],
+    "utilities": [
+      {
+        "type": "water",
+        "x": 150,
+        "y": 50,
+        "z": 0
+      },
+      {
+        "type": "electric",
+        "x": 280,
+        "y": 100,
+        "z": 0
+      }
+    ],
+    "windows": [
+      {
+        "wall": "back",
+        "x": 100,
+        "y": 90,
+        "width": 120,
+        "height": 100
+      }
+    ],
+    "doors": [
+      {
+        "wall": "right",
+        "x": 50,
+        "y": 0,
+        "width": 90,
+        "height": 210,
+        "type": "entry"
+      },
+      {
+        "wall": "front",
+        "x": 150,
+        "y": 0,
+        "width": 100,
+        "height": 220,
+        "type": "balcony"
+      }
+    ]
+  },
+  "wishlist": [
+    {
+      "type": "fridge",
+      "width": 60,
+      "height": 215
+    },
+    {
+      "type": "pantry",
+      "width": 45,
+      "height": 200
+    },
+    {
+      "type": "sink_cabinet",
+      "width": 80
+    },
+    {
+      "type": "dishwasher",
+      "width": 60
+    },
+    {
+      "type": "stove_cabinet",
+      "width": 60
+    },
+    {
+      "type": "wine_rack",
+      "width": 30,
+      "height": 85
+    }
+  ],
+  "wall_wishlist": [
+    {
+      "type": "hood",
+      "width": 60,
+      "height": 40
+    },
+    {
+      "type": "glass_cabinet",
+      "width": 60
+    },
+    {
+      "type": "open_shelving",
+      "width": 80
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+    "room": {
+        "width": 350,
+        "length": 250,
+        "height": 260,
+        "shape": "L",
+        "wall_b_length": 250,
+        "slopes": [],
+        "utilities": [
+            {
+                "type": "water",
+                "x": 150,
+                "y": 50,
+                "z": 0
+            }
+        ],
+        "windows": [],
+        "doors": []
+    },
+    "wishlist": [
+        {
+            "type": "fridge",
+            "width": 60,
+            "height": 215
+        },
+        {
+            "type": "pantry",
+            "width": 45,
+            "height": 215
+        },
+        {
+            "type": "sink_cabinet",
+            "width": 80
+        },
+        {
+            "type": "dishwasher",
+            "width": 60
+        },
+        {
+            "type": "stove_cabinet",
+            "width": 60
+        },
+        {
+            "type": "base_cabinet",
+            "width": 40
+        }
+    ],
+    "wall_wishlist": [
+        {
+            "type": "hood",
+            "width": 60
+        },
+        {
+            "type": "wall_cabinet",
+            "width": 60
+        }
+    ]
+}

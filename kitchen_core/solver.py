@@ -3,6 +3,295 @@ from typing import List, Dict, Optional, Any
 from .geometry import Room
 from .zones import Zone, ZoneFactory
 
+
+class StorageValidator:
+    """
+    Storage Index (SI) - Professional validation for kitchen capacity.
+    
+    Rules:
+    - 0.5 linear meters of cabinets per 1m² of room area
+    - Minimum 3.0m base cabinets for standard family
+    - Minimum 2.0m wall cabinets recommended
+    """
+    
+    RATIO = 0.5  # linear meters per m² room
+    MIN_BASE = 3.0  # meters (absolute minimum for base cabinets)
+    MIN_WALL = 2.0  # meters (recommended wall cabinets)
+    MIN_TOTAL = 3.0  # absolute minimum for any kitchen
+    ISLAND_THRESHOLD = 15.0  # m² - rooms larger than this get Island suggestion
+    
+    def __init__(self, room: Room):
+        self.room = room
+        self.room_area_m2 = (room.width * room.length) / 10000  # cm² to m²
+    
+    def calculate_requirements(self) -> Dict[str, float]:
+        """Calculate storage requirements based on room area."""
+        target = max(self.room_area_m2 * self.RATIO, self.MIN_TOTAL)
+        
+        return {
+            'room_area_m2': self.room_area_m2,
+            'target_linear_m': target,
+            'min_base_m': self.MIN_BASE,
+            'min_wall_m': self.MIN_WALL,
+            'suggest_island': self.room_area_m2 >= self.ISLAND_THRESHOLD
+        }
+    
+    def evaluate_solution(self, skeleton: Dict[str, Any]) -> Dict[str, Any]:
+        """Evaluate if the solution meets storage requirements."""
+        requirements = self.calculate_requirements()
+        
+        # Sum widths of all units (convert cm to m)
+        volumes = skeleton.get('volumes', [])
+        wall_items = skeleton.get('wall_wishlist', [])
+        
+        base_m = sum(v.get('width', 0) for v in volumes) / 100
+        wall_m = sum(v.get('width', 0) for v in wall_items) / 100
+        total_m = base_m + wall_m
+        
+        target = requirements['target_linear_m']
+        deficit = max(0, target - total_m)
+        
+        # Determine status
+        if total_m >= target:
+            status = 'OK'
+            recommendation = None
+        else:
+            status = 'UNDER-STORAGE'
+            recommendation = self._get_recommendation(requirements, deficit)
+        
+        return {
+            'room_area_m2': requirements['room_area_m2'],
+            'target_linear_m': round(target, 1),
+            'actual_base_m': round(base_m, 1),
+            'actual_wall_m': round(wall_m, 1),
+            'actual_total_m': round(total_m, 1),
+            'deficit_m': round(deficit, 1),
+            'status': status,
+            'recommendation': recommendation,
+            'suggest_island': requirements['suggest_island']
+        }
+    
+    def _get_recommendation(self, requirements: Dict, deficit: float) -> str:
+        """Get remediation recommendation based on priority."""
+        
+        # Priority 1 for large rooms: ISLAND
+        if requirements['suggest_island']:
+            return f"Add Kitchen Island (+{deficit:.1f}m needed). Room is large enough for premium island design."
+        
+        # Priority 2: Wall Cabinets
+        if deficit <= 2.0:
+            return f"Add Wall Cabinets (+{deficit:.1f}m). Most cost-effective solution."
+        
+        # Priority 3: Expand shape
+        if self.room.shape == 'I':
+            return f"Expand to L-Shape (+{deficit:.1f}m needed). Second wall available."
+        
+        # Priority 4: Tall Bank
+        return f"Add Tall Pantry Units (+{deficit:.1f}m needed). Maximize vertical storage."
+    
+    def print_report(self, evaluation: Dict[str, Any]):
+        """Print storage validation report."""
+        print("\n" + "="*50)
+        print("[STORAGE INDEX REPORT]")
+        print("="*50)
+        print(f"  Room Area:        {evaluation['room_area_m2']:.1f} m2")
+        print(f"  Target Capacity:  {evaluation['target_linear_m']:.1f} linear meters")
+        print(f"  Actual Base:      {evaluation['actual_base_m']:.1f} m")
+        print(f"  Actual Wall:      {evaluation['actual_wall_m']:.1f} m")
+        print(f"  Actual Total:     {evaluation['actual_total_m']:.1f} m")
+        print("-"*50)
+        
+        if evaluation['status'] == 'OK':
+            print(f"  [OK] Storage requirements met!")
+        else:
+            print(f"  [WARNING] Status: {evaluation['status']}")
+            print(f"  Deficit: {evaluation['deficit_m']:.1f} m")
+            print(f"  Recommendation: {evaluation['recommendation']}")
+        
+        if evaluation['suggest_island']:
+            print(f"  [ISLAND] Large room detected - Kitchen Island recommended!")
+        
+        print("="*50 + "\n")
+
+
+class WorkflowSolver:
+    """
+    Pro Workflow Zoning - Professional Kitchen Ergonomics.
+    
+    Implements the "Production Line" theory:
+    Fridge -> Sink -> Prep -> Stove
+    
+    Key features:
+    - Water anchor for WET zone
+    - Polarity detection (Storage vs Hot placement)
+    - Elastic PREP zone optimization
+    - Secondary zone for overflow
+    """
+    
+    def __init__(self, room: Room):
+        self.room = room
+        self.water_x = self._get_water_position()
+    
+    def _get_water_position(self) -> int:
+        """Get water supply X position from room utilities."""
+        for u in self.room.utilities:
+            if u.get('type') == 'water':
+                return int(u.get('x', self.room.width / 2))
+        # Default to center if no water defined
+        return int(self.room.width / 2)
+    
+    def solve_workflow(self, wishlist: List[Dict]) -> Dict[str, Any]:
+        """
+        Main workflow solving algorithm.
+        
+        Returns ordered zones with positions optimized for ergonomic flow.
+        """
+        from .zones import ZONE_CONSTRAINTS, ZoneType
+        
+        room_width = int(self.room.width)
+        
+        print(f"\n[Workflow Solver] Room: {room_width}cm, Water at: {self.water_x}cm")
+        
+        # === STEP 1: Determine what we have ===
+        has_fridge = any(i['type'] == 'fridge' for i in wishlist)
+        has_pantry = any(i['type'] == 'pantry' for i in wishlist)
+        has_sink = any(i['type'] == 'sink_cabinet' for i in wishlist)
+        has_dw = any(i['type'] == 'dishwasher' for i in wishlist)
+        has_stove = any(i['type'] == 'stove_cabinet' for i in wishlist)
+        
+        # Get widths
+        fridge_w = next((i['width'] for i in wishlist if i['type'] == 'fridge'), 0)
+        pantry_w = next((i['width'] for i in wishlist if i['type'] == 'pantry'), 0)
+        sink_w = next((i['width'] for i in wishlist if i['type'] == 'sink_cabinet'), 60)
+        dw_w = next((i['width'] for i in wishlist if i['type'] == 'dishwasher'), 0)
+        stove_w = next((i['width'] for i in wishlist if i['type'] == 'stove_cabinet'), 60)
+        
+        # === STEP 2: Calculate zone widths ===
+        storage_w = fridge_w + pantry_w
+        wet_w = sink_w + dw_w
+        hot_w = stove_w
+        landing_w = 30
+        hot_padding = 15
+        
+        # === STEP 3: Determine polarity (sequence direction) ===
+        # If water is on the left, put storage on the right (and vice versa)
+        if self.water_x < room_width / 2:
+            sequence = 'B'  # Storage on right: Landing-Hot-Prep-Wet-Landing-Storage
+            storage_side = 'right'
+            print(f"  Polarity: Water LEFT -> Storage RIGHT (Sequence B)")
+        else:
+            sequence = 'A'  # Storage on left: Storage-Landing-Wet-Prep-Hot-Landing
+            storage_side = 'left'
+            print(f"  Polarity: Water RIGHT -> Storage LEFT (Sequence A)")
+        
+        # === STEP 4: Calculate PREP (elastic zone) ===
+        fixed_total = storage_w + 2*landing_w + wet_w + hot_w + hot_padding
+        prep_available = room_width - fixed_total
+        
+        print(f"  Fixed zones: {fixed_total}cm, Prep available: {prep_available}cm")
+        
+        # Validate
+        if prep_available < 60:
+            print(f"  [CRITICAL] Prep zone too small ({prep_available}cm < 60cm)!")
+            prep_w = max(30, prep_available)  # Emergency minimum
+            secondary_w = 0
+        elif prep_available > 140:
+            prep_w = 110  # Ideal
+            secondary_w = prep_available - 110
+            print(f"  [OVERFLOW] Creating Secondary zone: {secondary_w}cm")
+        else:
+            prep_w = prep_available
+            secondary_w = 0
+        
+        # === STEP 5: Build zone layout ===
+        zones = []
+        current_x = 0
+        
+        if sequence == 'A':
+            # Storage-Landing-Wet-Prep-Hot-Landing
+            if storage_w > 0:
+                zones.append({'type': 'storage', 'x': current_x, 'width': storage_w, 
+                             'content': ['fridge', 'pantry'] if has_pantry else ['fridge']})
+                current_x += storage_w
+            
+            zones.append({'type': 'landing', 'x': current_x, 'width': landing_w})
+            current_x += landing_w
+            
+            zones.append({'type': 'wet', 'x': current_x, 'width': wet_w,
+                         'content': ['sink', 'dishwasher'] if has_dw else ['sink']})
+            current_x += wet_w
+            
+            zones.append({'type': 'prep', 'x': current_x, 'width': prep_w})
+            current_x += prep_w
+            
+            if secondary_w > 0:
+                zones.append({'type': 'secondary', 'x': current_x, 'width': secondary_w})
+                current_x += secondary_w
+            
+            zones.append({'type': 'hot', 'x': current_x, 'width': hot_w,
+                         'content': ['stove']})
+            current_x += hot_w
+            
+            # Final landing/padding
+            if current_x < room_width:
+                zones.append({'type': 'landing', 'x': current_x, 'width': room_width - current_x})
+        
+        else:  # Sequence B
+            # Landing-Hot-Prep-Wet-Landing-Storage
+            zones.append({'type': 'landing', 'x': current_x, 'width': hot_padding})
+            current_x += hot_padding
+            
+            zones.append({'type': 'hot', 'x': current_x, 'width': hot_w,
+                         'content': ['stove']})
+            current_x += hot_w
+            
+            if secondary_w > 0:
+                zones.append({'type': 'secondary', 'x': current_x, 'width': secondary_w})
+                current_x += secondary_w
+            
+            zones.append({'type': 'prep', 'x': current_x, 'width': prep_w})
+            current_x += prep_w
+            
+            zones.append({'type': 'wet', 'x': current_x, 'width': wet_w,
+                         'content': ['sink', 'dishwasher'] if has_dw else ['sink']})
+            current_x += wet_w
+            
+            zones.append({'type': 'landing', 'x': current_x, 'width': landing_w})
+            current_x += landing_w
+            
+            if storage_w > 0:
+                zones.append({'type': 'storage', 'x': current_x, 'width': storage_w,
+                             'content': ['fridge', 'pantry'] if has_pantry else ['fridge']})
+                current_x += storage_w
+        
+        # Print layout
+        print(f"\n  Zone Layout:")
+        for z in zones:
+            print(f"    {z['type'].upper():10} {z['x']:4}-{z['x']+z['width']:<4} ({z['width']}cm)")
+        
+        # Build skeleton
+        volumes = []
+        for z in zones:
+            vol = {
+                'x': z['x'],
+                'width': z['width'],
+                'function': z['type'],
+                'metadata': {'zone_type': z['type']}
+            }
+            if 'content' in z:
+                vol['metadata']['content'] = z['content']
+            volumes.append(vol)
+        
+        return {
+            'workflow_sequence': sequence,
+            'zones': zones,
+            'volumes': volumes,
+            'prep_width': prep_w,
+            'secondary_width': secondary_w,
+            'storage_side': storage_side
+        }
+
+
 class KitchenSolver:
     def __init__(self, room: Room):
         self.room = room
@@ -55,6 +344,350 @@ class KitchenSolver:
         # 5. Fillers handled via elasticity
         
         return zones
+    
+    # ========== L-SHAPE SUPPORT ==========
+    
+    def detect_optimal_shape(self, wishlist: List[Dict]) -> str:
+        """
+        Auto-detect whether I-shape or L-shape is optimal.
+        
+        Rule: If total item width exceeds 90% of main wall, switch to L.
+        """
+        total_width = sum(item.get('width', 60) for item in wishlist)
+        main_wall = int(self.room.width)
+        
+        # Leave 10% buffer for fillers/gaps
+        if total_width <= main_wall * 0.9:
+            return 'I'
+        else:
+            return 'L'
+    
+    def solve_l_shape(self, wishlist: List[Dict], wall_wishlist: List[Dict] = None,
+                      corner_type: str = 'blind') -> Optional[Dict[str, Any]]:
+        """
+        Solve L-shape kitchen with CORRECT architecture:
+        
+        Real L-Kitchen Layout:
+        - Corner module at intersection (65-90cm)
+        - Arm A (back wall): base cabinets (85cm) - workbench
+        - Arm B (side wall): base cabinets (85cm) - ends with Monolith
+        - Monolith (fridge/pantry) at FAR END of Arm B, not at corner!
+        
+        ┌─────────────┐
+        │   MONOLITH  │  ← Tall items at END
+        │  (Fridge)   │
+        ├─────────────┤
+        │  Base Cabs  │  Arm B (85cm)
+        ├─────────────┤
+        │   CORNER    │──────────────────────┐
+        │   MODULE    │    Base Cabinets     │ Arm A (85cm)
+        └─────────────┴──────────────────────┘
+        """
+        from .geometry import CornerModule
+        
+        wall_wishlist = wall_wishlist or []
+        self.validate_wishlist(wishlist, wall_wishlist)
+        
+        # Determine corner module
+        if corner_type == 'carousel':
+            corner = CornerModule.carousel()
+        elif corner_type == 'diagonal':
+            corner = CornerModule.diagonal()
+        else:
+            corner = CornerModule.blind()
+        
+        corner_size = corner.size
+        
+        # Calculate arm lengths
+        arm_a_length = int(self.room.width) - corner_size  # Main wall (back)
+        arm_b_length = int(self.room.wall_b_length or self.room.length) - corner_size  # Side wall
+        
+        print(f"  L-Shape: Corner={corner.type}({corner_size}cm)")
+        print(f"  Arm A (back): {arm_a_length}cm, Arm B (side): {arm_b_length}cm")
+        
+        # Classify items
+        tall_items = []
+        base_items = []
+        TALL_THRESHOLD = 150
+        
+        for item in wishlist:
+            item_h = item.get('height', 85)
+            if item_h > TALL_THRESHOLD or item['type'] in ['fridge', 'pantry', 'oven_tower']:
+                tall_items.append(item)
+            else:
+                base_items.append(item)
+        
+        # Calculate Monolith width (at END of Arm B)
+        monolith_width = sum(i.get('width', 60) for i in tall_items)
+        
+        # Arm B available for base cabinets (after reserving space for Monolith at end)
+        arm_b_base_length = arm_b_length - monolith_width
+        
+        print(f"  Monolith: {monolith_width}cm (at end of Arm B)")
+        print(f"  Arm B base zone: {arm_b_base_length}cm")
+        
+        # === SOLVE ARM A (Back Wall - Main Workbench) ===
+        # Contains: Sink, Cooktop, DW, prep cabinets
+        arm_a_zones = self.create_zones_from_wishlist(base_items)
+        arm_a_skeleton = self._solve_zones_in_range(
+            arm_a_zones, corner_size, corner_size + arm_a_length, wall_wishlist
+        )
+        
+        if arm_a_skeleton is None:
+            return None
+        
+        # === BUILD ARM B (Side Wall) ===
+        arm_b_volumes = []
+        
+        # 1. Base cabinets on Arm B (from corner to Monolith)
+        if arm_b_base_length > 30:  # Only if there's meaningful space
+            # Simple fill with base cabinets
+            current_z = corner_size
+            while current_z < corner_size + arm_b_base_length - 5:
+                cab_width = min(60, corner_size + arm_b_base_length - current_z)
+                if cab_width < 20:
+                    break
+                arm_b_volumes.append({
+                    'x': 0,
+                    'z': current_z,
+                    'width': cab_width,
+                    'function': 'storage',
+                    'metadata': {'height': 85, 'arm': 'B', 'axis': 'Z'}
+                })
+                current_z += cab_width
+        
+        # 2. Monolith at END of Arm B (farthest from corner)
+        monolith_z = corner_size + arm_b_base_length
+        for item in tall_items:
+            arm_b_volumes.append({
+                'x': 0,
+                'z': monolith_z,
+                'width': item.get('width', 60),
+                'function': item['type'],
+                'metadata': {
+                    'height': item.get('height', 215),
+                    'arm': 'B',
+                    'is_monolith': True,
+                    'axis': 'Z'
+                }
+            })
+            monolith_z += item.get('width', 60)
+        
+        # === BUILD SKELETON ===
+        skeleton = {
+            'shape': 'L',
+            'corner': {
+                'type': corner.type,
+                'size': corner_size,
+                'x': 0,
+                'z': 0
+            },
+            'arm_a': {
+                'start': corner_size,
+                'end': corner_size + arm_a_length,
+                'axis': 'X',
+                'height': 85,
+                'volumes': arm_a_skeleton['volumes']
+            },
+            'arm_b': {
+                'start': corner_size,
+                'end': corner_size + arm_b_length,
+                'axis': 'Z',
+                'height': 85,
+                'monolith_start': corner_size + arm_b_base_length,
+                'volumes': arm_b_volumes
+            },
+            'volumes': arm_a_skeleton['volumes'] + arm_b_volumes,
+            'wall_wishlist': wall_wishlist
+        }
+        
+        return skeleton
+    def solve_masses(self, wishlist: List[Dict]) -> Dict[str, Any]:
+        """
+        Premium V3: Mass Allocation - separates kitchen into Monolith and Workbench.
+        
+        Monolith: Tall block (Fridge, Pantry, Oven Tower) - placed at room edge
+        Workbench: Working line (Sink, Cooktop, Prep) - clean horizontal flow
+        
+        Returns:
+            {
+                'monolith': {'start': x, 'end': x, 'items': [...]},
+                'workbench': {'start': x, 'end': x, 'items': [...]},
+                'monolith_edge': 'left' or 'right'
+            }
+        """
+        # Classify items by height
+        tall_items = []
+        base_items = []
+        
+        TALL_THRESHOLD = 150  # cm
+        
+        for item in wishlist:
+            item_h = item.get('height', 85)
+            if item_h > TALL_THRESHOLD or item['type'] in ['fridge', 'pantry', 'oven_tower']:
+                tall_items.append(item)
+            else:
+                base_items.append(item)
+        
+        # Calculate required widths
+        monolith_width = sum(i.get('width', 60) for i in tall_items)
+        workbench_width = sum(i.get('width', 60) for i in base_items)
+        room_width = int(self.room.width)
+        
+        # Decide Monolith edge (prefer left, unless windows block it)
+        windows_on_left = any(
+            w.get('wall') == 'back' and w.get('x', 0) < room_width / 2 
+            for w in (self.room.windows or [])
+        )
+        
+        if windows_on_left:
+            monolith_edge = 'right'
+        else:
+            monolith_edge = 'left'
+        
+        # Calculate ranges
+        if monolith_edge == 'left':
+            monolith_start = 0
+            monolith_end = monolith_width
+            workbench_start = monolith_end + 2  # 2cm gap for visual separation
+            workbench_end = room_width
+        else:
+            workbench_start = 0
+            workbench_end = room_width - monolith_width - 2
+            monolith_start = room_width - monolith_width
+            monolith_end = room_width
+        
+        return {
+            'monolith': {
+                'start': monolith_start,
+                'end': monolith_end,
+                'width': monolith_width,
+                'items': tall_items
+            },
+            'workbench': {
+                'start': workbench_start,
+                'end': workbench_end,
+                'width': workbench_end - workbench_start,
+                'items': base_items
+            },
+            'monolith_edge': monolith_edge
+        }
+    
+    def solve_v3_premium(self, wishlist: List[Dict], wall_wishlist: List[Dict] = None) -> Optional[Dict[str, Any]]:
+        """
+        Premium V3 Solver with Mass Allocation.
+        
+        Pipeline:
+        1. Mass Allocation (Monolith vs Workbench)
+        2. Zone Solving within each mass
+        3. Returns enhanced skeleton with mass info
+        """
+        wall_wishlist = wall_wishlist or []
+        self.validate_wishlist(wishlist, wall_wishlist)
+        
+        # Phase 1: Mass Allocation
+        masses = self.solve_masses(wishlist)
+        print(f"  Mass Allocation: Monolith={masses['monolith']['width']}cm on {masses['monolith_edge']}")
+        print(f"  Workbench zone: {masses['workbench']['start']}-{masses['workbench']['end']}cm")
+        
+        # Phase 2: Solve Workbench (using existing zone logic)
+        workbench_zones = self.create_zones_from_wishlist(masses['workbench']['items'])
+        
+        # Solve zones within workbench range
+        skeleton = self._solve_zones_in_range(
+            workbench_zones, 
+            masses['workbench']['start'], 
+            masses['workbench']['end'],
+            wall_wishlist
+        )
+        
+        if skeleton is None:
+            return None
+        
+        # Add Monolith items directly (they're rigid blocks)
+        monolith_x = masses['monolith']['start']
+        for item in masses['monolith']['items']:
+            skeleton['volumes'].append({
+                'x': monolith_x,
+                'width': item.get('width', 60),
+                'function': item['type'],
+                'metadata': {'height': item.get('height', 215), 'is_monolith': True}
+            })
+            monolith_x += item.get('width', 60)
+        
+        # Attach mass info to skeleton
+        skeleton['masses'] = masses
+        
+        return skeleton
+    
+    def _solve_zones_in_range(self, zones: List[Zone], start: int, end: int, wall_wishlist: List[Dict]) -> Optional[Dict[str, Any]]:
+        """
+        Solve zones constrained to a specific X range.
+        """
+        # Handle empty zones case
+        if not zones:
+            return {'volumes': [], 'wall_wishlist': wall_wishlist}
+        
+        model = cp_model.CpModel()
+        zone_vars = {}
+        range_width = end - start
+        
+        for i, z in enumerate(zones):
+            w_var = model.NewIntVar(z.min_width, z.max_width, f'z_{i}_width')
+            s_var = model.NewIntVar(0, range_width, f'z_{i}_start')
+            e_var = model.NewIntVar(0, range_width, f'z_{i}_end')
+            inv_var = model.NewIntervalVar(s_var, w_var, e_var, f'z_{i}_inv')
+            
+            zone_vars[i] = {
+                'zone': z,
+                'start': s_var,
+                'end': e_var,
+                'width': w_var,
+                'interval': inv_var
+            }
+        
+        # Constraints
+        model.AddNoOverlap([v['interval'] for v in zone_vars.values()])
+        for v in zone_vars.values():
+            model.Add(v['end'] <= range_width)
+        
+        # Penalties
+        penalties = []
+        for i, v in zone_vars.items():
+            z = v['zone']
+            if z.compressibility != 'hard':
+                diff = model.NewIntVar(0, range_width, f'diff_{i}')
+                model.Add(diff >= v['width'] - z.ideal_width)
+                model.Add(diff >= z.ideal_width - v['width'])
+                penalties.append(diff * 10)
+        
+        # Gap minimization
+        total_width = model.NewIntVar(0, range_width * 2, 'total_width')
+        model.Add(total_width == sum(v['width'] for v in zone_vars.values()))
+        gap = model.NewIntVar(0, range_width, 'gap')
+        model.Add(gap == range_width - total_width)
+        model.Add(total_width <= range_width)
+        penalties.append(gap * 100)
+        
+        model.Minimize(sum(penalties))
+        
+        solver = cp_model.CpSolver()
+        status = solver.Solve(model)
+        
+        if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            skeleton = {'volumes': []}
+            for i, v in zone_vars.items():
+                z = v['zone']
+                skeleton['volumes'].append({
+                    'x': start + solver.Value(v['start']),  # Offset by range start
+                    'width': solver.Value(v['width']),
+                    'function': z.type,
+                    'metadata': z.metadata
+                })
+            skeleton['wall_wishlist'] = wall_wishlist
+            return skeleton
+        
+        return None
         
     def validate_wishlist(self, wishlist: List[Dict], wall_wishlist: List[Dict]):
         """

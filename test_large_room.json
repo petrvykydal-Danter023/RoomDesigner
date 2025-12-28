@@ -1,0 +1,34 @@
+{
+  "room": {
+    "width": 500,
+    "length": 400,
+    "height": 260,
+    "shape": "I",
+    "slopes": [],
+    "utilities": [
+      {
+        "type": "water",
+        "x": 150,
+        "y": 50,
+        "z": 0
+      }
+    ],
+    "windows": [],
+    "doors": []
+  },
+  "wishlist": [
+    {
+      "type": "sink_cabinet",
+      "width": 80
+    },
+    {
+      "type": "dishwasher",
+      "width": 60
+    },
+    {
+      "type": "stove_cabinet",
+      "width": 60
+    }
+  ],
+  "wall_wishlist": []
+}

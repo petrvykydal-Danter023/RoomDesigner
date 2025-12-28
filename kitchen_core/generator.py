@@ -45,6 +45,19 @@ class OBJGenerator:
         self.add_face([v5, v6, v7, v8])
         # Bottom
         self.add_face([v4, v3, v2, v1])
+    
+    def add_box_rotated_z(self, x: float, y: float, z: float, w: float, h: float, d: float):
+        """
+        Adds a box rotated 90° around Y axis for Z-axis wall placement.
+        Front face points towards X+ (into room) instead of Z+.
+        
+        For L-shape: items on left wall (perpendicular) need this.
+        Parameters are in the item's local space:
+        - w = item width (becomes depth along X)
+        - d = item depth (becomes width along Z)
+        """
+        # Swap w and d, shift coordinates so front faces X+
+        self.add_box(x, y, z, d, h, w)
         
     def generate_cabinet(self, x: float, y: float, z: float, width: float, height: float, depth: float, back_cutouts: List[Tuple[float, float, float, float]] = None):
         """
@@ -504,30 +517,417 @@ class OBJGenerator:
         door_z = z + depth - front_offset
         self.add_box(door_x - 5, y, door_z + depth - 5, door_w, height, 2)
 
+    # ========== EXPANDED MODEL LIBRARY ==========
+    
+    def generate_oven_tower(self, x: float, y: float, z: float, width: float = 60, height: float = 215, depth: float = 60):
+        """
+        Tall oven tower with built-in oven and storage above/below.
+        """
+        thick = 1.8
+        oven_h = 60
+        oven_y = 85  # Eye-level ergonomic placement
+        
+        # Carcass
+        self.add_box(x, y, z, thick, height, depth)  # Left
+        self.add_box(x + width - thick, y, z, thick, height, depth)  # Right
+        self.add_box(x + thick, y, z, width - 2*thick, thick, depth)  # Bottom
+        self.add_box(x + thick, y + height - thick, z, width - 2*thick, thick, depth)  # Top
+        self.add_box(x, y + thick, z + depth - 0.5, width, height - 2*thick, 0.5)  # Back
+        
+        # Storage below oven (drawers)
+        drawer_h = 25
+        for i in range(3):
+            dy = y + thick + i * drawer_h
+            self.add_box(x + 2, dy, z - 2, width - 4, drawer_h - 1, 2)
+        
+        # Oven cavity
+        self.add_box(x + thick + 2, oven_y, z + 3, width - 2*thick - 4, oven_h, depth - 6)
+        # Oven door (glass look)
+        self.add_box(x + 4, oven_y + 5, z - 2, width - 8, oven_h - 10, 3)
+        # Oven handle
+        self.add_box(x + 10, oven_y + oven_h - 8, z - 4, width - 20, 3, 2)
+        
+        # Storage above oven (cabinet)
+        top_cab_y = oven_y + oven_h + 5
+        top_cab_h = height - top_cab_y - thick
+        self.add_box(x + 2, top_cab_y, z - 2, width - 4, top_cab_h, 2)  # Door
+        
+    def generate_microwave_cabinet(self, x: float, y: float, z: float, width: float = 60, height: float = 45, depth: float = 35):
+        """
+        Wall cabinet with built-in microwave space.
+        """
+        thick = 1.8
+        micro_h = 30
+        micro_w = width - 8
+        
+        # Cabinet shell
+        self.add_box(x, y, z, thick, height, depth)  # Left
+        self.add_box(x + width - thick, y, z, thick, height, depth)  # Right
+        self.add_box(x + thick, y, z, width - 2*thick, thick, depth)  # Bottom
+        self.add_box(x + thick, y + height - thick, z, width - 2*thick, thick, depth)  # Top
+        self.add_box(x, y + thick, z + depth - 0.5, width, height - 2*thick, 0.5)  # Back
+        
+        # Microwave opening
+        micro_y = y + thick + 5
+        self.add_box(x + 4, micro_y, z + 2, micro_w, micro_h, depth - 4)
+        # Microwave door
+        self.add_box(x + 6, micro_y + 2, z - 2, micro_w - 4, micro_h - 4, 2)
+        
+    def generate_wine_rack(self, x: float, y: float, z: float, width: float = 30, height: float = 85, depth: float = 35):
+        """
+        Wine bottle storage rack with X-pattern dividers.
+        """
+        thick = 1.8
+        cell_h = 10  # Height per bottle row
+        cells_per_row = max(1, int(width / 10))
+        num_rows = int((height - 20) / cell_h)
+        
+        # Frame
+        self.add_box(x, y, z, thick, height, depth)  # Left
+        self.add_box(x + width - thick, y, z, thick, height, depth)  # Right
+        self.add_box(x + thick, y, z, width - 2*thick, thick, depth)  # Bottom
+        self.add_box(x + thick, y + height - thick, z, width - 2*thick, thick, depth)  # Top
+        
+        # X-pattern dividers (simplified as grid)
+        for row in range(num_rows):
+            for col in range(cells_per_row):
+                cy = y + 10 + row * cell_h
+                cx = x + thick + col * (width - 2*thick) / cells_per_row
+                # Horizontal divider
+                self.add_box(cx, cy, z + 5, (width - 2*thick) / cells_per_row, 1, depth - 10)
+                
+    def generate_pull_out_pantry(self, x: float, y: float, z: float, width: float = 30, height: float = 200, depth: float = 55):
+        """
+        Narrow pull-out pantry with wire shelves.
+        """
+        thick = 1.8
+        num_shelves = 6
+        
+        # Frame rails (sides)
+        self.add_box(x, y, z, thick, height, depth)  # Left
+        self.add_box(x + width - thick, y, z, thick, height, depth)  # Right
+        
+        # Back panel
+        self.add_box(x, y, z + depth - thick, width, height, thick)
+        
+        # Pull-out cart (slightly set back)
+        cart_x = x + thick + 2
+        cart_w = width - 2*thick - 4
+        cart_d = depth - 10
+        
+        # Shelf dividers
+        shelf_gap = (height - 20) / num_shelves
+        for i in range(num_shelves):
+            shelf_y = y + 10 + i * shelf_gap
+            # Wire shelf (grid pattern)
+            self.add_box(cart_x, shelf_y, z + 3, cart_w, 1.5, cart_d)
+            # Shelf front rail
+            self.add_box(cart_x, shelf_y, z, cart_w, 3, 1)
+        
+        # Handle
+        self.add_box(x + width/2 - 5, y + height/2, z - 3, 10, 20, 2)
+        
+    def generate_trash_cabinet(self, x: float, y: float, z: float, width: float = 45, height: float = 85, depth: float = 55):
+        """
+        Pull-out trash and recycling cabinet with dual bins.
+        """
+        thick = 1.8
+        bin_w = (width - 3*thick) / 2
+        
+        # Cabinet shell
+        self.add_box(x, y, z, thick, height, depth)  # Left
+        self.add_box(x + width - thick, y, z, thick, height, depth)  # Right
+        self.add_box(x + thick, y, z, width - 2*thick, thick, depth)  # Bottom
+        self.add_box(x, y + thick, z + depth - thick, width, height - thick, thick)  # Back
+        
+        # Center divider
+        self.add_box(x + width/2 - thick/2, y + thick, z + 5, thick, height - 20, depth - 10)
+        
+        # Trash bins (simplified as boxes)
+        bin_h = height - 25
+        # Left bin (trash)
+        self.add_box(x + thick + 2, y + thick + 2, z + 5, bin_w - 4, bin_h, depth - 15)
+        # Right bin (recycling)
+        self.add_box(x + width/2 + thick/2 + 2, y + thick + 2, z + 5, bin_w - 4, bin_h, depth - 15)
+        
+        # Door with toe-kick trigger
+        self.add_box(x + 2, y, z - 2, width - 4, height - 5, 2)
+        
+    def generate_coffee_station(self, x: float, y: float, z: float, width: float = 60, height: float = 85, depth: float = 60):
+        """
+        Coffee/breakfast station with appliance garage and storage.
+        """
+        thick = 1.8
+        
+        # Base cabinet
+        self.add_box(x, y, z, thick, height, depth)  # Left
+        self.add_box(x + width - thick, y, z, thick, height, depth)  # Right
+        self.add_box(x + thick, y, z, width - 2*thick, thick, depth)  # Bottom
+        self.add_box(x, y + thick, z + depth - thick, width, height - thick, thick)  # Back
+        
+        # Appliance shelf (raised platform)
+        shelf_y = y + 30
+        self.add_box(x + thick, shelf_y, z + thick, width - 2*thick, 2, depth - 2*thick)
+        
+        # Appliance garage door (roll-up style - closed)
+        self.add_box(x + 2, shelf_y + 5, z - 2, width - 4, height - shelf_y - 10, 2)
+        
+        # Coffee machine placeholder
+        machine_w = 25
+        machine_d = 30
+        machine_h = 35
+        self.add_box(x + (width - machine_w)/2, shelf_y + 2, z + 5, machine_w, machine_h, machine_d)
+        
+        # Cup hooks/shelf above
+        self.add_box(x + thick + 5, shelf_y + machine_h + 10, z + 5, width - 2*thick - 10, 2, depth/2)
+        
+    def generate_open_shelving(self, x: float, y: float, z: float, width: float = 80, height: float = 60, depth: float = 25):
+        """
+        Open floating shelves (no doors, industrial/modern look).
+        """
+        thick = 2.5
+        num_shelves = 3
+        shelf_gap = (height - thick) / num_shelves
+        
+        # Vertical supports (brackets)
+        bracket_w = 3
+        self.add_box(x, y, z + depth - 5, bracket_w, height, 5)  # Left
+        self.add_box(x + width - bracket_w, y, z + depth - 5, bracket_w, height, 5)  # Right
+        
+        # Shelves
+        for i in range(num_shelves):
+            shelf_y = y + i * shelf_gap
+            self.add_box(x, shelf_y, z, width, thick, depth)
+            
+    def generate_glass_cabinet(self, x: float, y: float, z: float, width: float = 60, height: float = 70, depth: float = 35):
+        """
+        Wall cabinet with glass doors for display.
+        """
+        thick = 1.8
+        frame_w = 4
+        
+        # Cabinet frame
+        self.add_box(x, y, z, thick, height, depth)  # Left
+        self.add_box(x + width - thick, y, z, thick, height, depth)  # Right
+        self.add_box(x + thick, y, z, width - 2*thick, thick, depth)  # Bottom
+        self.add_box(x + thick, y + height - thick, z, width - 2*thick, thick, depth)  # Top
+        self.add_box(x, y + thick, z + depth - thick, width, height - 2*thick, thick)  # Back
+        
+        # Glass door frame
+        self.add_box(x + 2, y + 2, z - 2, frame_w, height - 4, 2)  # Left frame
+        self.add_box(x + width - 2 - frame_w, y + 2, z - 2, frame_w, height - 4, 2)  # Right frame
+        self.add_box(x + 2, y + 2, z - 2, width - 4, frame_w, 2)  # Bottom frame
+        self.add_box(x + 2, y + height - 2 - frame_w, z - 2, width - 4, frame_w, 2)  # Top frame
+        
+        # Glass panel (thin)
+        self.add_box(x + frame_w + 4, y + frame_w + 4, z - 1, width - 2*frame_w - 8, height - 2*frame_w - 8, 0.5)
+        
+        # Interior shelf
+        shelf_y = y + height/2
+        self.add_box(x + thick + 2, shelf_y, z + 3, width - 2*thick - 4, 1.5, depth - 6)
+        
+    def generate_spice_rack(self, x: float, y: float, z: float, width: float = 20, height: float = 40, depth: float = 10):
+        """
+        Narrow spice rack for door mounting or wall.
+        """
+        thick = 1.0
+        num_shelves = 4
+        shelf_gap = (height - 2*thick) / num_shelves
+        
+        # Frame
+        self.add_box(x, y, z, thick, height, depth)  # Left
+        self.add_box(x + width - thick, y, z, thick, height, depth)  # Right
+        self.add_box(x + thick, y + height - thick, z, width - 2*thick, thick, depth)  # Top
+        
+        # Shelves with front rail
+        for i in range(num_shelves):
+            shelf_y = y + 3 + i * shelf_gap
+            self.add_box(x + thick, shelf_y, z, width - 2*thick, thick, depth)
+            # Front rail
+            self.add_box(x + thick, shelf_y + thick, z - 1, width - 2*thick, 3, 1)
+            
+    def generate_appliance_garage(self, x: float, y: float, z: float, width: float = 45, height: float = 45, depth: float = 40):
+        """
+        Countertop appliance garage with tambour door.
+        """
+        thick = 1.8
+        
+        # Shell
+        self.add_box(x, y, z, thick, height, depth)  # Left
+        self.add_box(x + width - thick, y, z, thick, height, depth)  # Right
+        self.add_box(x + thick, y, z, width - 2*thick, thick, depth)  # Bottom
+        self.add_box(x + thick, y + height - thick, z, width - 2*thick, thick, depth)  # Top
+        self.add_box(x, y + thick, z + depth - thick, width, height - 2*thick, thick)  # Back
+        
+        # Tambour door (roll-up, shown closed)
+        self.add_box(x + 2, y + thick, z - 2, width - 4, height - 2*thick, 1.5)
+        
+        # Handle groove
+        self.add_box(x + width/2 - 15, y + height/2 - 2, z - 3, 30, 4, 1)
+        
+    def generate_knife_block(self, x: float, y: float, z: float, width: float = 15, height: float = 25, depth: float = 12):
+        """
+        Countertop knife block accessory.
+        """
+        # Base block
+        self.add_box(x, y, z, width, height, depth)
+        
+        # Knife slots (grooves)
+        slot_gap = 2.5
+        for i in range(5):
+            slot_x = x + 3 + i * slot_gap
+            self.add_box(slot_x, y + height - 15, z + 2, 0.5, 12, depth - 4)
+            
+    def generate_utensil_holder(self, x: float, y: float, z: float, diameter: float = 12, height: float = 18):
+        """
+        Cylindrical utensil holder (approximated as octagon).
+        """
+        # Simplified as square with beveled corners
+        self.add_box(x, y, z, diameter, height, diameter)
+        bevel = diameter * 0.15
+        self.add_box(x - bevel/2, y, z + bevel, diameter + bevel, height, diameter - 2*bevel)
+
     def generate_item_by_type(self, item_type: str, x: float, y: float, z: float, width: float, height: float = 85, depth: float = 60, **kwargs):
         """
         Dispatcher: Routes to specialized generator based on item type.
         """
         generators = {
+            # === BASE CABINETS ===
             'base_cabinet': lambda: self.generate_cabinet(x, y, z, width, height, depth),
             'drawers': lambda: self.generate_drawer_cabinet(x, y, z, width, height, depth, num_drawers=kwargs.get('num_drawers', 3)),
             'drawer_cabinet': lambda: self.generate_drawer_cabinet(x, y, z, width, height, depth, num_drawers=kwargs.get('num_drawers', 3)),
             'sink_cabinet': lambda: self.generate_sink_cabinet(x, y, z, width, height, depth),
             'dishwasher': lambda: self.generate_dishwasher(x, y, z, width, height, depth),
-            'fridge': lambda: self.generate_fridge(x, y, z, width, height, depth),
-            'oven': lambda: self.generate_oven(x, y, z, width, kwargs.get('oven_height', 60), depth),
-            'stove_cabinet': lambda: self.generate_cooktop(x, y + height, z + 4, width, depth - 8),  # On top of base
-            'cooktop': lambda: self.generate_cooktop(x, y, z, width, depth),
-            'hood': lambda: self.generate_hood(x, y, z, width, kwargs.get('hood_height', 40), kwargs.get('hood_depth', 35)),
-            'wall_cabinet': lambda: self.generate_wall_cabinet(x, y, z, width, height, depth),
-            'pantry': lambda: self.generate_pantry(x, y, z, width, height, depth),
             'corner_cabinet': lambda: self.generate_corner_cabinet(x, y, z, width, height, depth),
-            'bottle_rack': lambda: self.generate_drawer_cabinet(x, y, z, width, height, depth, num_drawers=5),
-            'filler': lambda: self.add_box(x, y, z, width, height, depth - 2),  # Simple filler panel
+            'trash_cabinet': lambda: self.generate_trash_cabinet(x, y, z, width, height, depth),
+            'coffee_station': lambda: self.generate_coffee_station(x, y, z, width, height, depth),
+            
+            # === COOKING ===
+            'stove_cabinet': lambda: self.generate_cooktop(x, y + height, z + 4, width, depth - 8),
+            'cooktop': lambda: self.generate_cooktop(x, y, z, width, depth),
+            'oven': lambda: self.generate_oven(x, y, z, width, kwargs.get('oven_height', 60), depth),
+            'hood': lambda: self.generate_hood(x, y, z, width, kwargs.get('hood_height', 40), kwargs.get('hood_depth', 35)),
+            
+            # === TALL UNITS (MONOLITH) ===
+            'fridge': lambda: self.generate_fridge(x, y, z, width, height, depth),
+            'pantry': lambda: self.generate_pantry(x, y, z, width, height, depth),
+            'oven_tower': lambda: self.generate_oven_tower(x, y, z, width, height, depth),
+            'pull_out_pantry': lambda: self.generate_pull_out_pantry(x, y, z, width, height, depth),
+            
+            # === WALL CABINETS ===
+            'wall_cabinet': lambda: self.generate_wall_cabinet(x, y, z, width, height, depth),
+            'microwave_cabinet': lambda: self.generate_microwave_cabinet(x, y, z, width, height, depth),
+            'glass_cabinet': lambda: self.generate_glass_cabinet(x, y, z, width, height, depth),
+            'open_shelving': lambda: self.generate_open_shelving(x, y, z, width, height, depth),
+            
+            # === SPECIALTY ===
+            'wine_rack': lambda: self.generate_wine_rack(x, y, z, width, height, depth),
+            'bottle_rack': lambda: self.generate_wine_rack(x, y, z, width, height, depth),
+            'spice_rack': lambda: self.generate_spice_rack(x, y, z, width, height, depth),
+            'appliance_garage': lambda: self.generate_appliance_garage(x, y, z, width, height, depth),
+            
+            # === ACCESSORIES ===
+            'knife_block': lambda: self.generate_knife_block(x, y, z, width, height, depth),
+            'utensil_holder': lambda: self.generate_utensil_holder(x, y, z, width, height),
+            
+            # === FILLERS ===
+            'filler': lambda: self.add_box(x, y, z, width, height, depth - 2),
+            'landing': lambda: self.generate_drawer_cabinet(x, y, z, width, height, depth, num_drawers=2),
+            'prep': lambda: self.generate_drawer_cabinet(x, y, z, width, height, depth, num_drawers=3),
+            'storage': lambda: self.generate_cabinet(x, y, z, width, height, depth),
+            'secondary': lambda: self.generate_drawer_cabinet(x, y, z, width, height, depth, num_drawers=4),
         }
         
         generator = generators.get(item_type, lambda: self.generate_cabinet(x, y, z, width, height, depth))
         generator()
+
+    def generate_item_rotated_z(self, item_type: str, x: float, y: float, z: float, width: float, height: float = 85, depth: float = 60, **kwargs):
+        """
+        Generate item rotated 90° for placement on perpendicular wall (Z axis).
+        Item faces X+ direction instead of Z+.
+        
+        For L-shape Arm B: cabinets on left wall facing into room.
+        """
+        # For rotated items, we need to:
+        # 1. Swap width and depth in the geometry
+        # 2. Generate at correct position
+        
+        # Simple approach: generate with swapped dimensions
+        # The item's "width" becomes its depth (into room along X)
+        # The item's "depth" becomes its width (along wall on Z)
+        
+        if item_type == 'fridge':
+            self._generate_fridge_rotated(x, y, z, width, height, depth)
+        elif item_type == 'pantry':
+            self._generate_pantry_rotated(x, y, z, width, height, depth)
+        else:
+            # Generic rotation: just swap width/depth and use basic cabinet
+            self.generate_cabinet(x, y, z, depth, height, width)
+    
+    def _generate_fridge_rotated(self, x: float, y: float, z: float, width: float, height: float, depth: float):
+        """Fridge rotated 90° - door faces X+ direction."""
+        thick = 2.0
+        # Swap w/d for rotated placement
+        w = depth  # Width along X (into room)
+        d = width  # Depth along Z (item's original width)
+        
+        # Outer shell
+        self.add_box(x, y, z, thick, height, d)  # Left (now back)
+        self.add_box(x + w - thick, y, z, thick, height, d)  # Right (now front-ish)
+        self.add_box(x + thick, y, z, w - 2*thick, thick, d)  # Bottom
+        self.add_box(x + thick, y + height - thick, z, w - 2*thick, thick, d)  # Top
+        self.add_box(x, y + thick, z, w, height - 2*thick, thick)  # Back
+        
+        # Freezer/Fridge compartments
+        freezer_h = height * 0.28
+        fridge_h = height - freezer_h - thick
+        
+        # Divider
+        self.add_box(x + thick, y + fridge_h, z + thick, w - 2*thick, thick, d - thick)
+        
+        # Doors face X+ (front of room)
+        # Freezer door
+        self.add_box(x + w, y + fridge_h + thick, z, 3.0, freezer_h - thick, d)
+        self.add_box(x + w + 3.0, y + fridge_h + freezer_h/2, z + d - 8, 3, 15, 2)  # Handle
+        
+        # Fridge door
+        self.add_box(x + w, y, z, 3.0, fridge_h, d)
+        self.add_box(x + w + 3.0, y + fridge_h - 25, z + d - 8, 3, 20, 2)  # Handle
+        
+        # Internal shelves
+        num_shelves = 4
+        shelf_gap = fridge_h / (num_shelves + 1)
+        for i in range(1, num_shelves + 1):
+            shelf_y = y + thick + i * shelf_gap
+            self.add_box(x + thick + 2, shelf_y, z + thick + 3, w - 2*thick - 4, 1, d - thick - 8)
+    
+    def _generate_pantry_rotated(self, x: float, y: float, z: float, width: float, height: float, depth: float):
+        """Pantry cabinet rotated 90° - door faces X+ direction."""
+        thick = 1.8
+        # Swap w/d for rotated placement
+        w = depth  # Width along X
+        d = width  # Depth along Z
+        
+        # Carcass
+        self.add_box(x, y, z, thick, height, d)  # Left (back wall)
+        self.add_box(x + w - thick, y, z, thick, height, d)  # Right
+        self.add_box(x + thick, y, z, w - 2*thick, thick, d)  # Bottom
+        self.add_box(x + thick, y + height - thick, z, w - 2*thick, thick, d)  # Top
+        self.add_box(x, y + thick, z, w - thick, height - 2*thick, 0.5)  # Back
+        
+        # Shelves
+        num_shelves = 5
+        usable_h = height - 2*thick
+        shelf_gap = usable_h / num_shelves
+        
+        for i in range(num_shelves):
+            shelf_y = y + thick + i * shelf_gap + 5
+            self.add_box(x + thick + 2, shelf_y, z + 5, w - 2*thick - 4, 1.5, d - 10)
+        
+        # Door (faces X+)
+        self.add_box(x + w, y, z, 2.0, height, d)
+        # Handle
+        self.add_box(x + w + 2.0, y + height/2 - 10, z + d - 6, 3, 20, 2)
 
     def generate_worktop(self, x_start: float, x_end: float, y: float, depth: float, holes: List[Tuple[float, float]] = None):
         """
@@ -872,6 +1272,434 @@ class OBJGenerator:
         
         # Process Wall
         process_layer(wall_items, 70, 33, 145)
+
+    # ========== PREMIUM GEOMETRY V3 ==========
+    
+    def generate_gola_profile(self, x: float, y: float, z: float, width: float, depth: float, position: str = 'top'):
+        """
+        Generate handleless Gola profile - negative groove for finger grip.
+        Creates the premium "floating door" look without visible handles.
+        
+        Args:
+            position: 'top' (under worktop), 'between' (between drawers), 'bottom' (above plinth)
+        """
+        groove_height = 4.0
+        groove_depth = 2.5
+        inset_from_front = 1.5  # Groove is slightly behind door face
+        
+        # The groove is a horizontal channel cut into the cabinet
+        # It's positioned at the specified height
+        if position == 'top':
+            groove_y = y + 85 - groove_height  # Just under worktop
+        elif position == 'bottom':
+            groove_y = y + 10  # Just above plinth
+        else:
+            groove_y = y  # Caller specifies exact position
+        
+        # Create the groove (negative space effect via colored/shadowed box)
+        # In real CSG we'd subtract this. Here we add it as darker geometry
+        self.add_box(x + 0.5, groove_y, z + depth - groove_depth - inset_from_front, 
+                     width - 1, groove_height, groove_depth)
+    
+    def generate_recessed_plinth(self, x: float, z: float, width: float, depth: float, 
+                                  plinth_height: float = 10, setback: float = 8):
+        """
+        Generate recessed toe kick that creates a floating effect.
+        The plinth is set back from the cabinet face, creating shadow.
+        
+        Args:
+            setback: How far back the plinth is from cabinet face (8-10cm typical)
+        """
+        # Plinth panel (recessed)
+        plinth_depth = depth - setback
+        self.add_box(x, 0, z + setback, width, plinth_height, plinth_depth)
+        
+        # Floor shadow strip (darker area where plinth is recessed)
+        # This is optional visual enhancement
+        shadow_height = 0.5
+        self.add_box(x, 0, z, width, shadow_height, setback)
+    
+    def generate_end_panel(self, x: float, y: float, z: float, height: float, depth: float, 
+                           side: str = 'left', panel_width: float = 2.0, include_plinth: bool = True):
+        """
+        Generate decorative end panel that covers exposed cabinet sides.
+        Creates framed, finished look on kitchen ends.
+        
+        Args:
+            side: 'left' or 'right'
+            panel_width: Thickness of panel (typically 2cm)
+            include_plinth: Whether to extend panel to floor
+        """
+        plinth_height = 10 if include_plinth else 0
+        panel_height = height + plinth_height
+        panel_y = 0 if include_plinth else y
+        
+        if side == 'left':
+            panel_x = x - panel_width
+        else:  # right
+            panel_x = x
+            
+        self.add_box(panel_x, panel_y, z, panel_width, panel_height, depth)
+    
+    def generate_shadow_gap(self, x: float, y: float, z: float, gap_width: float = 0.2, 
+                            height: float = 85, depth: float = 2):
+        """
+        Generate thin vertical shadow gap between doors/drawers.
+        Creates visual separation and modern grid look.
+        """
+        # Shadow gap is a thin recessed line between cabinet modules
+        self.add_box(x - gap_width/2, y, z, gap_width, height, depth)
+    
+    def generate_premium_drawer(self, x: float, y: float, z: float, width: float, 
+                                 drawer_height: float, depth: float = 60, 
+                                 with_gola: bool = True, gap: float = 0.2):
+        """
+        Generate a single premium drawer with Gola profile and shadow gaps.
+        """
+        thick = 1.8
+        
+        # Drawer front (slightly inset for shadow gap effect)
+        front_inset = gap
+        self.add_box(x + front_inset, y + front_inset, z + depth, 
+                     width - 2*front_inset, drawer_height - 2*front_inset, 2.0)
+        
+        # Gola groove at top of drawer
+        if with_gola:
+            groove_h = 3.5
+            groove_d = 2.0
+            self.add_box(x + front_inset + 0.5, y + drawer_height - groove_h - front_inset, 
+                         z + depth - groove_d, width - 2*front_inset - 1, groove_h, groove_d)
+        
+        # Inner drawer box
+        inner_w = width - 2*thick - 4
+        inner_h = drawer_height - 4
+        inner_d = depth - 12
+        self.add_box(x + thick + 2, y + 2, z + 6, inner_w, inner_h, inner_d)
+        
+        # Soft-close rail hints
+        rail_w = 1.5
+        self.add_box(x + thick, y + 3, z + 8, rail_w, 1, inner_d)
+        self.add_box(x + width - thick - rail_w, y + 3, z + 8, rail_w, 1, inner_d)
+    
+    def generate_premium_cabinet(self, x: float, y: float, z: float, width: float, 
+                                  height: float = 85, depth: float = 60,
+                                  layer_heights: List[int] = None,
+                                  with_gola: bool = True,
+                                  is_end: str = None):  # 'left', 'right', or None
+        """
+        Generate a complete premium cabinet with:
+        - Recessed plinth
+        - Layer-aligned drawer fronts
+        - Gola profiles
+        - Shadow gaps
+        - End panel if at edge
+        """
+        plinth_h = 10
+        cabinet_y = y + plinth_h
+        cabinet_h = height - plinth_h
+        
+        # Default layer heights (3 equal drawers)
+        if layer_heights is None:
+            layer_heights = [25, 25, cabinet_h - 50]  # Three sections
+        
+        thick = 1.8
+        
+        # === CARCASS ===
+        
+        # Side panels (from plinth height up)
+        self.add_box(x, cabinet_y, z, thick, cabinet_h, depth)  # Left
+        self.add_box(x + width - thick, cabinet_y, z, thick, cabinet_h, depth)  # Right
+        
+        # Bottom panel
+        self.add_box(x + thick, cabinet_y, z, width - 2*thick, thick, depth)
+        
+        # Top panel/rail
+        self.add_box(x + thick, cabinet_y + cabinet_h - thick, z, width - 2*thick, thick, depth)
+        
+        # Back panel
+        self.add_box(x + thick, cabinet_y + thick, z, width - 2*thick, cabinet_h - 2*thick, 0.5)
+        
+        # === RECESSED PLINTH ===
+        self.generate_recessed_plinth(x, z, width, depth, plinth_h, setback=8)
+        
+        # === DRAWER FRONTS (LAYER ALIGNED) ===
+        current_y = cabinet_y
+        for i, layer_h in enumerate(layer_heights):
+            # Drawer front with shadow gap
+            self.generate_premium_drawer(x, current_y, z, width, layer_h, depth, 
+                                          with_gola=(i == 0))  # Gola only on top drawer
+            current_y += layer_h
+        
+        # === END PANEL ===
+        if is_end:
+            self.generate_end_panel(x if is_end == 'left' else x + width, 
+                                     cabinet_y, z, cabinet_h, depth, is_end)
+    
+    def generate_premium_item_by_type(self, item_type: str, x: float, y: float, z: float,
+                                       width: float, height: float = 85, depth: float = 60,
+                                       layer_heights: List[int] = None, is_end: str = None,
+                                       **kwargs):
+        """
+        Premium dispatcher that routes to appropriate premium generator.
+        """
+        if item_type in ['drawer_cabinet', 'base_cabinet', 'drawers', 'storage']:
+            self.generate_premium_cabinet(x, y, z, width, height, depth, 
+                                           layer_heights, with_gola=True, is_end=is_end)
+        elif item_type == 'sink_cabinet':
+            # Sink cabinet: door on bottom, Gola stripped
+            self.generate_sink_cabinet(x, y, z, width, height, depth)
+            self.generate_recessed_plinth(x, z, width, depth)
+        elif item_type == 'dishwasher':
+            self.generate_dishwasher(x, y, z, width, height, depth)
+            self.generate_recessed_plinth(x, z, width, depth)
+        elif item_type == 'fridge':
+            self.generate_fridge(x, y, z, width, height, depth)
+        elif item_type == 'pantry':
+            self.generate_pantry(x, y, z, width, height, depth)
+        elif item_type == 'stove_cabinet':
+            # Cooktop on top, drawers below
+            self.generate_premium_cabinet(x, y, z, width, height, depth, 
+                                           layer_heights, with_gola=True, is_end=is_end)
+            self.generate_cooktop(x, y + height, z + 4, width, depth - 8)
+        elif item_type == 'hood':
+            self.generate_hood(x, y, z, width, kwargs.get('hood_height', 40), depth)
+        elif item_type == 'wall_cabinet':
+            self.generate_wall_cabinet(x, y, z, width, height, depth)
+        elif item_type == 'filler':
+            # Premium filler with shadow gaps
+            self.add_box(x + 0.2, y, z, width - 0.4, height, depth - 2)
+        else:
+            # Fallback to standard
+            self.generate_item_by_type(item_type, x, y, z, width, height, depth, **kwargs)
+
+    # ========== L-SHAPE GEOMETRY ==========
+    
+    def generate_corner_blind(self, x: float, y: float, z: float, size: float = 65, height: float = 85, depth: float = 60):
+        """
+        Generate blind corner cabinet (65cm standard).
+        L-shaped carcass with door on one face.
+        """
+        thick = 1.8
+        plinth_h = 10
+        cab_y = y + plinth_h
+        cab_h = height - plinth_h
+        
+        # L-shaped back walls
+        self.add_box(x, cab_y, z, size, cab_h, thick)  # Back along X
+        self.add_box(x, cab_y, z, thick, cab_h, size)  # Back along Z
+        
+        # Front edges
+        accessible_w = 30  # Front panel width
+        self.add_box(x + size - thick, cab_y, z, thick, cab_h, size - accessible_w)
+        self.add_box(x, cab_y, z + size - thick, size - accessible_w, cab_h, thick)
+        
+        # Bottom and top
+        self.add_box(x + thick, cab_y, z + thick, size - 2*thick, thick, size - 2*thick)
+        self.add_box(x + thick, cab_y + cab_h - thick, z + thick, size - 2*thick, thick, size - 2*thick)
+        
+        # Door (on front accessible face)
+        self.add_box(x + size - accessible_w, cab_y, z + size, accessible_w, cab_h, 2)
+        
+        # Shelf (half-moon style)
+        self.add_box(x + 5, cab_y + cab_h/2, z + 5, size - 10, 1.5, size - 10)
+        
+        # Plinth
+        self.add_box(x + 8, 0, z + 8, size - 16, plinth_h, size - 16)
+    
+    def generate_corner_carousel(self, x: float, y: float, z: float, size: float = 90, height: float = 85, depth: float = 60):
+        """
+        Generate carousel corner cabinet (90cm premium) with lazy susan.
+        """
+        thick = 1.8
+        plinth_h = 10
+        cab_y = y + plinth_h
+        cab_h = height - plinth_h
+        
+        # L-shaped back walls
+        self.add_box(x, cab_y, z, size, cab_h, thick)  # Back X
+        self.add_box(x, cab_y, z, thick, cab_h, size)  # Back Z
+        
+        # Diagonal front (simplified as two angled panels)
+        front_offset = 35
+        self.add_box(x + size - thick, cab_y, z, thick, cab_h, size - front_offset)
+        self.add_box(x, cab_y, z + size - thick, size - front_offset, cab_h, thick)
+        
+        # Diagonal door section
+        diag_w = front_offset * 1.4
+        self.add_box(x + size - front_offset, cab_y, z + size - front_offset, diag_w, cab_h, 2)
+        
+        # Bottom and top
+        self.add_box(x + thick, cab_y, z + thick, size - 2*thick, thick, size - 2*thick)
+        self.add_box(x + thick, cab_y + cab_h - thick, z + thick, size - 2*thick, thick, size - 2*thick)
+        
+        # Carousel shelves (circular approximation)
+        carousel_r = size * 0.35
+        carousel_cx = x + size/2
+        carousel_cz = z + size/2
+        
+        # Lower carousel
+        self.add_box(carousel_cx - carousel_r, cab_y + 10, carousel_cz - carousel_r, carousel_r*2, 2, carousel_r*2)
+        # Upper carousel
+        self.add_box(carousel_cx - carousel_r, cab_y + cab_h/2, carousel_cz - carousel_r, carousel_r*2, 2, carousel_r*2)
+        
+        # Plinth
+        self.add_box(x + 8, 0, z + 8, size - 16, plinth_h, size - 16)
+    
+    def generate_l_worktop(self, arm_a_start: float, arm_a_end: float, arm_b_end: float,
+                           y: float, depth: float = 62, corner_size: float = 65):
+        """
+        Generate L-shaped worktop that flows through corner.
+        """
+        thickness = 3.0
+        overhang = 2.0
+        real_depth = depth + overhang
+        
+        # Arm A worktop (along X axis, from corner to end)
+        self.add_box(corner_size, y, 0, arm_a_end - corner_size, thickness, real_depth)
+        
+        # Arm B worktop (along Z axis, from corner down)
+        self.add_box(0, y, corner_size, real_depth, thickness, arm_b_end - corner_size)
+        
+        # Corner piece (square at intersection)
+        self.add_box(0, y, 0, corner_size + overhang, thickness, corner_size + overhang)
+        
+        # Mitered edge detail (diagonal cut appearance)
+        # This creates the professional 45° joint look
+        miter_size = 5
+        self.add_box(corner_size - miter_size, y + thickness, corner_size - miter_size, 
+                     miter_size * 2, 0.5, miter_size * 2)
+    
+    def generate_l_shape_item(self, item: Dict, arm: str = 'A'):
+        """
+        Generate item with correct orientation for L-shape arm.
+        Arm A = along X axis (standard)
+        Arm B = along Z axis (rotated 90°)
+        """
+        x = item['x']
+        width = item['width']
+        height = item.get('height', 85)
+        depth = item.get('depth', 60)
+        item_type = item['type']
+        
+        if arm == 'A':
+            # Standard orientation (along back wall)
+            self.generate_item_by_type(item_type, x, 0, 0, width, height, depth)
+        else:
+            # Rotated for side wall (swap X and Z logic)
+            # Items on Arm B are placed along Z axis
+            z_pos = x  # x in Arm B context is actually Z position
+            self.generate_item_by_type(item_type, 0, 0, z_pos, width, height, depth)
+
+    # ========== KITCHEN ISLAND ==========
+    
+    def generate_island(self, x: float, z: float, width: float = 180, depth: float = 90, 
+                        height: float = 90, has_cooktop: bool = False, has_seating: bool = True):
+        """
+        Generate premium kitchen island.
+        
+        Args:
+            x, z: Center position of island
+            width: Length along X axis (default 180cm)
+            depth: Depth along Z axis (default 90cm)
+            height: Counter height (default 90cm - bar height)
+            has_cooktop: Add cooktop on island
+            has_seating: Add overhang for bar stools
+        """
+        thick = 1.8
+        plinth_h = 10
+        
+        # Calculate actual position (center to corner)
+        ix = x - width/2
+        iz = z - depth/2
+        
+        cab_y = plinth_h
+        cab_h = height - plinth_h - 3  # Leave space for countertop
+        
+        print(f"  Generating Island: {width}x{depth}cm at ({x}, {z})")
+        
+        # === BASE CABINET STRUCTURE ===
+        # Front panel (facing into room)
+        self.add_box(ix, cab_y, iz, width, cab_h, thick)
+        # Back panel
+        self.add_box(ix, cab_y, iz + depth - thick, width, cab_h, thick)
+        # Left side
+        self.add_box(ix, cab_y, iz + thick, thick, cab_h, depth - 2*thick)
+        # Right side
+        self.add_box(ix + width - thick, cab_y, iz + thick, thick, cab_h, depth - 2*thick)
+        
+        # Bottom
+        self.add_box(ix + thick, cab_y, iz + thick, width - 2*thick, thick, depth - 2*thick)
+        
+        # === INTERNAL DIVIDERS (creates 3 sections) ===
+        section_w = (width - 4*thick) / 3
+        for i in range(1, 3):
+            div_x = ix + thick + i * (section_w + thick)
+            self.add_box(div_x, cab_y + thick, iz + thick, thick, cab_h - 2*thick, depth - 2*thick)
+        
+        # === DRAWERS (premium look) ===
+        drawer_front_depth = 2.0
+        gap = 0.3
+        
+        for i in range(3):
+            drawer_x = ix + thick + gap + i * (section_w + thick)
+            # 3 drawers per section
+            drawer_heights = [20, 20, cab_h - 42]
+            current_y = cab_y + gap
+            
+            for dh in drawer_heights:
+                self.add_box(drawer_x, current_y, iz - drawer_front_depth, 
+                            section_w - 2*gap, dh - gap, drawer_front_depth)
+                # Drawer handle (Gola style groove)
+                self.add_box(drawer_x + 2, current_y + dh - 4, iz - drawer_front_depth - 0.5,
+                            section_w - 4 - 2*gap, 3, 0.5)
+                current_y += dh
+        
+        # === COUNTERTOP ===
+        counter_thickness = 3.0
+        overhang_front = 5 if has_seating else 2
+        overhang_back = 2
+        overhang_sides = 2
+        
+        # Seating overhang (one side extends more)
+        seating_overhang = 30 if has_seating else 0
+        
+        self.add_box(
+            ix - overhang_sides,
+            height - counter_thickness,
+            iz - overhang_front - seating_overhang,
+            width + 2*overhang_sides,
+            counter_thickness,
+            depth + overhang_front + overhang_back + seating_overhang
+        )
+        
+        # === PLINTH ===
+        plinth_inset = 8
+        self.add_box(
+            ix + plinth_inset,
+            0,
+            iz + plinth_inset,
+            width - 2*plinth_inset,
+            plinth_h,
+            depth - 2*plinth_inset
+        )
+        
+        # === OPTIONAL COOKTOP ===
+        if has_cooktop:
+            cooktop_w = 60
+            cooktop_d = 50
+            cooktop_x = ix + (width - cooktop_w) / 2
+            cooktop_z = iz + depth - cooktop_d - 10
+            self.generate_cooktop(cooktop_x, height, cooktop_z, cooktop_w, cooktop_d)
+        
+        # === BAR STOOL POSITIONS (visual markers) ===
+        if has_seating:
+            stool_spacing = 60
+            num_stools = int(width / stool_spacing)
+            for i in range(num_stools):
+                stool_x = ix + 30 + i * stool_spacing
+                stool_z = iz - seating_overhang - 40
+                # Simple stool representation
+                self.add_box(stool_x, 0, stool_z, 40, 65, 40)
 
     def save(self, filename: str):
         with open(filename, 'w') as f:

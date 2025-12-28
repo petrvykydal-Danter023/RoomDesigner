@@ -1,5 +1,71 @@
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
+from enum import Enum
+
+
+class ZoneType(Enum):
+    """Professional kitchen zone types for workflow optimization."""
+    STORAGE = 'storage'     # Fridge, Pantry (Monolith)
+    LANDING = 'landing'     # Buffer zones between functional areas
+    WET = 'wet'             # Sink, Dishwasher
+    PREP = 'prep'           # Main work area (elastic)
+    HOT = 'hot'             # Stove, Oven
+    SECONDARY = 'secondary' # Coffee, Toaster (overflow)
+    FILLER = 'filler'       # Gap fillers
+
+
+# Pro Workflow Zoning - Ergonomic Constraints
+ZONE_CONSTRAINTS: Dict[ZoneType, Dict[str, Any]] = {
+    ZoneType.STORAGE: {
+        'min': 60, 'ideal': 120, 'max': 180,
+        'elasticity': 'low',
+        'edge_only': True,  # Must be at start or end of run
+        'ratio': 0.20  # ~20% of total length
+    },
+    ZoneType.LANDING: {
+        'min': 30, 'ideal': 30, 'max': 45,
+        'elasticity': 'none',
+        'edge_only': False
+    },
+    ZoneType.WET: {
+        'min': 60, 'ideal': 120, 'max': 150,
+        'elasticity': 'none',
+        'anchor': 'water_x',  # Must be near water supply
+        'anchor_tolerance': 100  # ±100cm from water_x
+    },
+    ZoneType.PREP: {
+        'min': 60, 'ideal': 110, 'max': 140,
+        'elasticity': 'high',  # Primary elastic zone
+        'between': ('wet', 'hot')  # Must be between these zones
+    },
+    ZoneType.HOT: {
+        'min': 60, 'ideal': 90, 'max': 120,
+        'elasticity': 'low',
+        'wall_padding': 15  # Min distance from walls
+    },
+    ZoneType.SECONDARY: {
+        'min': 40, 'ideal': 60, 'max': 120,
+        'elasticity': 'medium',
+        'optional': True  # Created from PREP overflow
+    },
+    ZoneType.FILLER: {
+        'min': 1, 'ideal': 5, 'max': 30,
+        'elasticity': 'liquid'
+    }
+}
+
+
+# Workflow Sequences
+WORKFLOW_SEQUENCE_A = [
+    ZoneType.STORAGE, ZoneType.LANDING, ZoneType.WET, 
+    ZoneType.PREP, ZoneType.HOT, ZoneType.LANDING
+]
+
+WORKFLOW_SEQUENCE_B = [
+    ZoneType.LANDING, ZoneType.HOT, ZoneType.PREP,
+    ZoneType.WET, ZoneType.LANDING, ZoneType.STORAGE
+]
+
 
 @dataclass
 class Zone:
