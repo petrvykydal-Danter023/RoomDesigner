@@ -1,0 +1,8 @@
+newmtl wet_zone
+Kd 0.130 0.590 0.950
+
+newmtl hot_zone
+Kd 1.000 0.600 0.000
+
+newmtl storage
+Kd 0.480 0.330 0.280

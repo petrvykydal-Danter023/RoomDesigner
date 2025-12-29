@@ -1,0 +1,10 @@
+{
+    "name": "kitchen",
+    "version": "1.0.0",
+    "description": "Standard residential kitchen domain",
+    "required_items": [
+        "sink",
+        "stove",
+        "fridge"
+    ]
+}

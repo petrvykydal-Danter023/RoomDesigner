@@ -9,12 +9,18 @@ from kitchen_core.generator import OBJGenerator
 from kitchen_core.skins.premium import PremiumSkin
 from kitchen_core.ghost_chef import GhostChef
 from kitchen_core.style_grammar import StyleCritic
+from kitchen_core.heatmaps import HeatmapSolver
+from kitchen_core.heatmaps.visualize import export_combined_debug, export_placement_diagram
 
 def main():
     parser = argparse.ArgumentParser(description="Kitchen Generator V3 - Premium Architecture")
     parser.add_argument("input_file", help="Path to input JSON file")
     parser.add_argument("--mode", choices=['standard', 'premium'], default='premium', 
                         help="Generation mode: standard (V2) or premium (V3)")
+    parser.add_argument("--heatmaps", action="store_true",
+                        help="Use heatmap-based placement solver (Beam Search)")
+    parser.add_argument("--debug-maps", action="store_true",
+                        help="Export heatmap debug PNG images")
     args = parser.parse_args()
     
     with open(args.input_file, 'r') as f:
@@ -50,27 +56,56 @@ def main():
         
         if actual_shape == 'L':
             # === L-SHAPE PIPELINE ===
-            print("\n[Phase 1] L-Shape: Corner Nexus Strategy...")
-            skeleton = solver.solve_l_shape(wishlist, wall_wishlist, corner_type='blind')
+            if args.heatmaps:
+                # L-Shape Heatmap Solver (Beam Search)
+                print("\n[Phase 1] L-Shape Heatmap Placement (Beam Search)...")
+                from kitchen_core.heatmaps.solver import LShapeHeatmapSolver
+                lshape_solver = LShapeHeatmapSolver(room, corner_type='blind')
+                lshape_result = lshape_solver.solve(wishlist)
+                
+                skeleton = {
+                    'shape': 'L',
+                    'corner': lshape_result['corner'],
+                    'arm_a': lshape_result['arm_a'],
+                    'arm_b': lshape_result['arm_b'],
+                    'volumes': lshape_result['volumes'],
+                    'wall_wishlist': wall_wishlist,
+                    'heatmap_debug': lshape_result.get('debug', {})
+                }
+            else:
+                # Original OR-Tools solver
+                print("\n[Phase 1] L-Shape: Corner Nexus Strategy...")
+                skeleton = solver.solve_l_shape(wishlist, wall_wishlist, corner_type='blind')
             
             if skeleton is None:
                 print("No valid L-shape layout found!")
                 sys.exit(1)
         else:
-            # === I-SHAPE PIPELINE with PRO WORKFLOW ZONING ===
-            print("\n[Phase 1] Pro Workflow Zoning...")
-            
-            # Use WorkflowSolver for ergonomic zone layout
-            workflow_solver = WorkflowSolver(room)
-            workflow_result = workflow_solver.solve_workflow(wishlist)
-            
-            # Use workflow volumes as base skeleton
-            skeleton = {
-                'shape': 'I',
-                'workflow': workflow_result,
-                'volumes': workflow_result['volumes'],
-                'wall_wishlist': wall_wishlist
-            }
+            # === I-SHAPE PIPELINE ===
+            if args.heatmaps:
+                # === HEATMAP SOLVER (Beam Search) ===
+                print("\n[Phase 1] Heatmap Placement (Beam Search)...")
+                heatmap_solver = HeatmapSolver(room)
+                heatmap_result = heatmap_solver.solve(wishlist)
+                
+                skeleton = {
+                    'shape': 'I',
+                    'volumes': heatmap_result['volumes'],
+                    'wall_wishlist': wall_wishlist,
+                    'heatmap_debug': heatmap_result.get('debug', {})
+                }
+            else:
+                # === PRO WORKFLOW ZONING (Default) ===
+                print("\n[Phase 1] Pro Workflow Zoning...")
+                workflow_solver = WorkflowSolver(room)
+                workflow_result = workflow_solver.solve_workflow(wishlist)
+                
+                skeleton = {
+                    'shape': 'I',
+                    'workflow': workflow_result,
+                    'volumes': workflow_result['volumes'],
+                    'wall_wishlist': wall_wishlist
+                }
             
             if skeleton is None:
                 print("No valid layout found!")
@@ -292,6 +327,19 @@ def main():
     # Save Input Copy
     with open(os.path.join(out_dir, "input_snapshot.json"), 'w') as f:
         json.dump(data, f, indent=4)
+    
+    # Export heatmap debug images if requested
+    if args.heatmaps and args.debug_maps and 'heatmap_debug' in skeleton:
+        debug_dir = os.path.join(out_dir, "debug")
+        os.makedirs(debug_dir, exist_ok=True)
+        
+        # Export placement diagram
+        export_placement_diagram(
+            placed_items=placed_items,
+            room_width=room.width,
+            path=os.path.join(debug_dir, "placement.png")
+        )
+        print(f"  [Debug] Exported heatmap debug images to {debug_dir}/")
         
     print(f"Generated {obj_path} and {json_path}")
 

@@ -1,0 +1,572 @@
+# 🏗️ RoomDesigner Engine V2 - Technical Blueprint
+# ================================================
+
+## Začni jádrem
+
+## 📦 Technology Stack
+
+### 🧠 I. Core Logic & Math
+| Library | Purpose | Use Case |
+|---------|---------|----------|
+| **OR-Tools (CP-SAT)** | Constraint optimization | Zoning, furniture placement, rule validation |
+| **NetworkX** | Graph theory | Workflow validation, circulation paths, connectivity |
+| **NumPy** | Matrix operations | Heatmaps, utility theory, position scoring |
+
+### 📐 II. 2D Geometry & Spatial Analysis
+| Library | Purpose | Use Case |
+|---------|---------|----------|
+| **Shapely** | Geometric operations | Zone definition, collision detection, buffers |
+| **Rtree** | Spatial indexing | Fast collision queries in large spaces |
+| **Ezdxf** | CAD export | DXF drawings for architects |
+
+### 🎨 III. 3D Generation
+| Library | Purpose | Use Case |
+|---------|---------|----------|
+| **CadQuery** | Parametric CAD | Furniture geometry, fillets, chamfers |
+| **Manifold3D** | Boolean operations | Fast mesh operations, hole drilling |
+| **Trimesh** | Mesh processing | Validation, volume calculation, GLB export |
+
+### 🛡️ IV. Infrastructure
+| Library | Purpose | Use Case |
+|---------|---------|----------|
+| **Pydantic** | Data validation | Input schemas, domain pack definitions |
+
+---
+
+## 🗺️ Zone Definitions (5 Types)
+
+### 1. CIRCULATION 🚶
+- **Description:** Empty space for movement
+- **Constraint:** No SOLID_VOLUME
+- **Generation:** Connects doors to key points (Sink, Table)
+- **Width:** Min 90-110cm
+
+### 2. DINING 🍽️
+- **Description:** Table and chairs area
+- **Trigger:** `wishlist.contains('table')`
+- **Constraint:** Must be outside Work Triangle
+- **Buffer:** 60cm Chair Zone around table
+
+### 3. WORKBENCH 🛠️
+- **Description:** Main work surface at 86-92cm height
+- **Contents:** Sink, Stove, Dishwasher, Prep
+- **Constraint:** Must be continuous (no height jumps)
+- **Depth:** 60cm standard
+
+### 4. TALL_BANK 🏢
+- **Description:** Floor-to-ceiling block
+- **Contents:** Built-in oven, Microwave, Pantry
+- **Constraint:** Must be at edge of Workbench zone
+- **Logic:** Creates furniture "wall"
+
+### 5. FRIDGE ❄️
+- **Description:** Standalone or built-in
+- **Constraint:** Near entrance (unloading) + near Workbench
+- **Repulsion:** Not next to oven without insulation
+
+---
+
+## 🛡️ Physical Rules
+
+### 1. Service Void (Montážní mezera) 🔧
+```
+Cabinet depth: 56cm
+Worktop depth: 60cm (or 65-70cm if thick pipes)
+Gap behind: 5cm for utilities
+```
+**Implementation:**
+- Generate cabinets at z=5cm from wall
+- Worktop covers the gap
+- Auto-detect thick pipes in utilities and adjust
+
+### 2. Corner Crash Guard (Rohový hranol) 💥
+```
+L-shape inner corner needs 5x5cm (or 10x10cm) filler post
+```
+**Implementation:**
+- Arm_A and Arm_B cannot start at corner_size
+- Insert Corner_Filler_Post (5x5cm) first
+- Cabinets start AFTER the post
+
+### 3. Bio-Metric Tuning 📏
+```
+Worktop height = Elbow height - 15cm
+Elbow height ≈ User height × 0.63
+```
+**Implementation:**
+- Input: `user_height` (cm)
+- Cabinet: 72cm (fixed)
+- Plinth: 10-20cm (variable)
+- Output: "Recommended plinth: 17cm for your height"
+
+---
+
+## 🔄 Collision System
+
+### Layer Architecture
+```
+Furniture Layer (SOLID)  → Cabinet, Table, Island
+Activity Layer (TEMPORAL) → Opening zones, Circulation
+```
+
+### Collision Rules
+| Collision Type | Result | Example |
+|----------------|--------|---------|
+| Furniture vs Furniture | ❌ BLOCK | Cabinet vs Table |
+| Activity vs Furniture | ❌ BLOCK | Dishwasher door vs Table |
+| Activity vs Activity | ✅ ALLOW | Door swing vs Corridor |
+
+---
+
+## 📊 Storage Priority Rule
+**User wishlist appliances have priority over storage fillers.**
+
+When filling gaps:
+1. Place user-requested items FIRST
+2. Fill remaining space with storage cabinets
+3. Never sacrifice appliance for more storage
+
+---
+
+## ⚙️ Pipeline Flow
+
+```
+1. Pydantic     → Validate input.json + domain rules
+2. NumPy        → Create heatmaps (Architecture, Ergonomics, Light)
+3. OR-Tools     → Find optimal zone positions
+4. Shapely      → Generate 2D footprints, opening zones, corridors
+5. Rtree        → Fast collision detection
+6. NetworkX     → Validate workflow graph
+7. CadQuery     → Extrude 2D to 3D models
+8. Manifold3D   → Boolean operations (sink cutouts)
+9. Trimesh      → Validate mesh, calculate volume, export GLB
+10. Ezdxf       → Generate DXF for electrician/plumber
+```
+
+---
+
+# 🧩 L-Shape Algorithm: Wall Segments & Corner Nexus
+
+**Strategy:** Instead of solving "L-kitchen", solve "N walls connected by corners".
+
+## Concept
+- Room has **Wall Segments** (e.g., L-shape = Wall_A + Wall_B)
+- Segments meet at **Corner Nexus**
+- Engine solves Nexus first, then Segments independently
+
+---
+
+## Phase 1: Wall Detection
+```python
+def extract_walls(room_polygon):
+    walls = []
+    coords = list(room_polygon.exterior.coords)
+    for i in range(len(coords) - 1):
+        p1, p2 = coords[i], coords[i+1]
+        wall = WallSegment(p1, p2, length=distance(p1, p2))
+        walls.append(wall)
+    return walls
+```
+
+## Phase 2: Corner Detection
+```python
+def detect_corners(walls):
+    corners = []
+    for i, wall_a in enumerate(walls):
+        wall_b = walls[(i + 1) % len(walls)]
+        angle = calculate_angle(wall_a, wall_b)
+        if 80 < angle < 100:  # ~90°
+            corner_type = 'inner' if angle < 180 else 'outer'
+            corners.append(CornerNode(wall_a, wall_b, corner_type))
+    return corners
+```
+
+## Phase 3: Corner Solver (Nexus)
+
+| Strategy | Size | Use Case |
+|----------|------|----------|
+| Blind Corner | 65cm | Budget - inaccessible interior |
+| Corner Carousel | 90cm | Premium - "Le Mans" shelves |
+| Diagonal Cut | 45° | Modern - angled worktop |
+
+```python
+def solve_corner(corner_node, budget, style):
+    if budget == "low":
+        return BlindCornerModule(width=65)
+    elif style == "modern":
+        return DiagonalCutModule(angle=45)
+    else:
+        return CornerCarouselModule(diameter=90)
+```
+
+**Key:** Corner module "eats" space from adjacent segments.
+- If Corner = 90cm → Wall_A starts at x=90, not x=0
+
+## Phase 4: Segment Solvers
+Each wall is now independent 1D problem:
+- Wall_A: 300cm - 90cm (corner) = 210cm → Solve as I-kitchen
+- Wall_B: 400cm - 90cm (corner) = 310cm → Solve as I-kitchen
+
+**Key:** No 2D tetris! Just 1D solver N times.
+
+## Phase 5: Merge
+- **Worktop:** 45° miter cut OR butt joint with corner profile
+- **Plinth:** Mesh union in corner
+- **Tech:** CadQuery Boolean union + fillet
+
+---
+
+## Tech Stack for L-Shape
+| Task | Technology |
+|------|------------|
+| Wall detection | Shapely `Polygon.exterior.coords` |
+| Angle calculation | NumPy `arctan2` |
+| Segment solving | OR-Tools / Heatmaps |
+| Worktop merge | CadQuery / Manifold3D |
+| Corner visualization | Trimesh |
+
+---
+
+# 🚪 Openings (Windows & Doors)
+
+## Multi-Opening Support
+Unlimited windows/doors on any wall. Each defined by:
+
+```json
+{
+  "windows": [
+    {"wall": "back", "x": 100, "width": 120, "height": 150, "sill_height": 90},
+    {"wall": "side", "x": 50, "width": 80}
+  ],
+  "doors": [
+    {"wall": "back", "x": 300, "width": 90, "swing": "left"},
+    {"wall": "side", "x": 0, "width": 80, "type": "sliding"}
+  ]
+}
+```
+
+## Constraint Generation
+
+| Opening | Hard Zone | Soft Zone | Heatmap Effect |
+|---------|-----------|-----------|----------------|
+| Window | No tall cabinets | Sink preferred | +LightLayer boost |
+| Door | No furniture | 90cm clearance | +TrafficLayer penalty |
+| Door swing arc | Blocked | N/A | -10000 penalty |
+
+## Door Types & Swing Zones
+
+| Type | Swing Zone | Clearance |
+|------|------------|-----------|
+| `left` | 90° arc left | 90cm radius |
+| `right` | 90° arc right | 90cm radius |
+| `sliding` | None | Track width only |
+| `pocket` | None | Wall cavity needed |
+
+## Heatmap Layers Affected
+- **ArchitectureLayer:** Penalizes positions blocking openings
+- **LightLayer:** Boosts sink/prep near windows
+- **TrafficLayer:** Creates circulation paths from doors to key points
+
+## Validation Rules
+```yaml
+rules:
+  - name: "window_tall_cabinet"
+    constraint: "no_overlap"
+    target: "tall_cabinet"
+    reference: "window"
+    severity: "critical"
+    
+  - name: "door_clearance"
+    constraint: "buffer"
+    target: "door"
+    buffer_size: 90
+    severity: "critical"
+```
+
+---
+
+# 🎨 Zone Color Coding (3D Visualization)
+
+**Goal:** Color-coded 3D output for instant zone recognition.
+
+## Zone → Color Mapping
+
+| Zone | Color | Hex | Items |
+|------|-------|-----|-------|
+| 🔵 Wet Zone | Blue | `#2196F3` | sink, dishwasher |
+| 🟠 Hot Zone | Orange | `#FF9800` | stove, oven, hood |
+| 🟣 Cold Zone | Purple | `#9C27B0` | fridge, freezer |
+| 🟤 Storage | Brown | `#795548` | drawer_cabinet, pantry, base_cabinet |
+| ⚪ Worktop | Light Gray | `#E0E0E0` | countertop surface |
+| 🔘 Corner | Dark Gray | `#424242` | corner_cabinet |
+
+## Implementation
+
+### OBJ + MTL Format
+```
+# layout.mtl
+newmtl wet_zone
+Kd 0.129 0.588 0.953   # Blue RGB
+
+newmtl hot_zone
+Kd 1.0 0.596 0.0       # Orange RGB
+
+newmtl cold_zone
+Kd 0.612 0.153 0.69    # Purple RGB
+
+newmtl storage_zone
+Kd 0.475 0.333 0.282   # Brown RGB
+```
+
+### GLB/GLTF Format (Preferred)
+```python
+ZONE_MATERIALS = {
+    'sink': {'color': [0.129, 0.588, 0.953, 1.0], 'name': 'wet_zone'},
+    'dishwasher': {'color': [0.129, 0.588, 0.953, 1.0], 'name': 'wet_zone'},
+    'stove': {'color': [1.0, 0.596, 0.0, 1.0], 'name': 'hot_zone'},
+    'oven': {'color': [1.0, 0.596, 0.0, 1.0], 'name': 'hot_zone'},
+    'fridge': {'color': [0.612, 0.153, 0.69, 1.0], 'name': 'cold_zone'},
+    'drawer_cabinet': {'color': [0.475, 0.333, 0.282, 1.0], 'name': 'storage'},
+}
+```
+
+### Trimesh Integration
+```python
+import trimesh
+
+def apply_zone_color(mesh, item_type):
+    color = ZONE_MATERIALS.get(item_type, {'color': [0.5, 0.5, 0.5, 1.0]})
+    mesh.visual.face_colors = [int(c * 255) for c in color['color']]
+    return mesh
+```
+
+## Output Modes
+| Mode | Format | Use Case |
+|------|--------|----------|
+| Debug | GLB with zone colors | Designer review |
+| Production | GLB with realistic materials | Client presentation |
+| CAD | DXF with hatching | Technical drawings |
+
+---
+
+# 📏 Upper Cabinet Grid-Lock System
+
+**Problem:** "Rozházené" horní skříňky. Spáry nesedí se spodními.
+
+**Solution:** Master & Slave - horní skříňky jsou otroky spodních.
+
+## 1. Master & Slave Principle 👑🔗
+
+```
+Upper_Grid = Lower_Grid
+```
+
+1. Solve base cabinets first → get vertical edge positions
+2. Pass grid to upper solver
+3. Upper cabinets MUST align to this grid
+
+```python
+def extract_vertical_grid(base_items):
+    grid_lines = set()
+    for item in base_items:
+        grid_lines.add(item.x)
+        grid_lines.add(item.x + item.width)
+    return sorted(list(grid_lines))
+```
+
+## 2. Grid Breakers (Exceptions) 💨🪟
+
+| Element | Rule |
+|---------|------|
+| **Hood** | Must be directly above stove (same width or wider) |
+| **Window** | No-Go Zone in upper layer |
+
+```python
+# Hood placement (anchor first)
+stove = find_item(base_items, 'stove')
+hood = create_item('hood', x=stove.x, width=stove.width)
+
+# Then fill left_gap and right_gap with wall cabinets
+```
+
+## 3. Symmetry Filler Algorithm ⚖️
+
+| Gap 150cm | Bad | Good | Best |
+|-----------|-----|------|------|
+| | 60+45+45 | 45+60+45 | 50+50+50 |
+
+**Scoring:**
+- Alignment with base grid: +100
+- Symmetry (same cabinet left & right): +50
+
+## 4. UpperCabinetSolver
+
+```python
+class UpperCabinetSolver:
+    def solve(self, wall_length, base_items, windows):
+        grid = extract_vertical_grid(base_items)
+        
+        # 1. Place hood (anchor)
+        stove = find_item(base_items, 'stove')
+        items = [create_hood(stove.x, stove.width)]
+        
+        # 2. Create No-Go zones for windows
+        no_go = [window.bounds for window in windows]
+        
+        # 3. Fill gaps left & right of hood
+        left_gap = (0, stove.x)
+        right_gap = (stove.x + stove.width, wall_length)
+        
+        items += fill_with_symmetry(left_gap, grid, no_go)
+        items += fill_with_symmetry(right_gap, grid, no_go)
+        
+        return items
+```
+
+## 5. Visual Tips 💎
+
+| Rule | Why |
+|------|-----|
+| 60cm below = 60cm above | Spáry sedí |
+| If not possible: 2×30cm | Never 45 over 60 |
+| Align with Tall Unit top | Clean line |
+| Add Light Rail (3cm) | LED strip cover |
+
+---
+
+## 📁 Output Formats
+- `layout.json` - Structured data
+- `layout.glb` - 3D model for web
+- `layout.dxf` - CAD drawing
+- `layout.step` - Manufacturing format
+
+---
+
+# 🏆 The 11/10 Stack
+
+## 1. Declarative Rules (Rule Engine) 📜
+
+**Goal:** Rules are DATA, not code. Designers can edit without programmers.
+
+**Tech:** YAML + Pydantic + Generic Validator
+
+### Example: `rules/kitchen_rules.yaml`
+```yaml
+rules:
+  - name: "sink_water_distance"
+    target: "sink"
+    constraint: "distance"
+    reference: "water_outlet"
+    max_value: 100
+    severity: "critical"
+    message: "Dřez je moc daleko od vody."
+
+  - name: "dishwasher_adjacency"
+    target: "dishwasher"
+    constraint: "adjacency"
+    reference: "sink"
+    type: "side-by-side"
+    severity: "warning"
+```
+
+### Generic Validator
+```python
+def validate_rules(layout, rules):
+    report = []
+    for rule in rules:
+        if rule.constraint == "distance":
+            dist = measure_distance(layout[rule.target], layout[rule.reference])
+            if dist > rule.max_value:
+                report.append(ValidationIssue(rule.severity, rule.message))
+    return report
+```
+
+---
+
+## 2. Domain Pack Abstraction 📦
+
+**Goal:** Core engine is universal. Domain (Kitchen vs Office) is just a plugin.
+
+**Tech:** Plugin Architecture (pluggy / entry points)
+
+### Directory Structure
+```
+/domains
+  /kitchen
+    manifest.json   # "Kitchen has sink, fridge..."
+    assets/         # 3D models (GLB)
+    materials.yaml  # "Oak", "White gloss"
+    zoning.py       # Work Triangle logic
+  /office
+    manifest.json   # "Office has desk, chair..."
+    assets/
+```
+
+### Logic
+```python
+current_domain = load_domain("kitchen")
+WishlistExpander.required_items = current_domain.required_items
+# Same engine serves any interior type
+```
+
+---
+
+## 3. Real-time API ⚡
+
+**Goal:** User moves cabinet on web → instant validation (< 200ms)
+
+**Tech:** FastAPI + WebSockets + Redis (caching)
+
+### Example Endpoint
+```python
+from fastapi import FastAPI, WebSocket
+
+app = FastAPI()
+
+@app.websocket("/ws/configure")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    while True:
+        data = await websocket.receive_json()
+        validation = validate_move(data['layout'])
+        await websocket.send_json(validation)
+```
+
+---
+
+## 4. BOM + Validation Report 📊
+
+**Goal:** Output is not just "image" but "project documentation"
+
+**Tech:** Pandas + Jinja2 + WeasyPrint
+
+### BOM Generator
+- Each entity has `sku_mapping` (e.g., `cabinet_60 -> IKEA_12345`)
+- Engine sums all items from final layout
+- Adds "invisible" items (legs, hinges, strips)
+- Pandas exports CSV: `Item | Count | Price | Stock`
+
+### Validation Report PDF
+```
+Page 1: 3D visualization
+Page 2: Floor plan with dimensions (SVG)
+Page 3: Health Check
+  ✅ Work Triangle: 4.2m (optimal)
+  ✅ Circulation: 95cm (OK)
+  ⚠️  Dishwasher clearance: 85cm (minimum)
+Page 4: Shopping list (BOM)
+```
+
+---
+
+## 🎯 11/10 Summary
+
+| Feature | Technology | Why? |
+|---------|------------|------|
+| Rules | YAML + Pydantic | Editable without code |
+| API | FastAPI + WebSockets | Real-time feedback |
+| Modularity | Plugin System | Add "Bathroom" tomorrow |
+| Documentation | Pandas + WeasyPrint | Pro PDF generation |
+| Validation | Shapely | Geometric precision |
+
+**Start with:** Pydantic + YAML rules → Cleans up spaghetti if/else 🍝 → 💎

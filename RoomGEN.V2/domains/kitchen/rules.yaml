@@ -1,0 +1,52 @@
+rules:
+  # Efficiency Rules
+  - id: "sink_water_dist"
+    type: "distance"
+    target: "sink"
+    reference: "water_point"
+    max_value: 200
+    severity: "error"
+  
+  - id: "dishwasher_sink_adjacency"
+    type: "adjacency"
+    target: "dishwasher"
+    reference: "sink"
+    required: true # Dishwasher should be near sink
+    severity: "warning"
+
+  # Negative Adjacency (Safety/Zone Conflicts)
+  - id: "stove_sink_conflict"
+    type: "adjacency"
+    target: "stove"
+    reference: "sink"
+    required: false
+    min_distance: 30 # Needs buffer
+    severity: "error"
+
+  - id: "stove_dishwasher_conflict"
+    type: "adjacency"
+    target: "stove"
+    reference: "dishwasher"
+    required: false
+    min_distance: 30
+    severity: "error"
+
+  - id: "sink_fridge_conflict"
+    type: "adjacency"
+    target: "sink"
+    reference: "fridge"
+    required: false
+    min_distance: 30
+    severity: "error"
+
+  # Physical Checks
+  - id: "service_void_clearance"
+    type: "physical"
+    check: "service_void"
+    min_value: 5.0
+    severity: "error"
+
+  - id: "corner_guard_check"
+    type: "physical"
+    check: "corner_guard"
+    severity: "warning"
