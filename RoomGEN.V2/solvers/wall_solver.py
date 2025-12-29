@@ -69,7 +69,7 @@ class WallSolver:
         width_map = {
             "sink": 60, "dishwasher": 60, "stove": 60,
             "fridge": 60, "base_cabinet": 60, "narrow_cabinet": 30,
-            "pantry": 60, "drawer_unit": 60
+            "pantry": 60, "drawer_unit": 60, "drawer_unit_90": 90
         }
 
         for seg_start, seg_end in free_segments:
@@ -104,10 +104,16 @@ class WallSolver:
                 # Check logic
                 needs_spacer = False
                 if last_item_type:
-                    bad_neighbors = conflicts.get(req, [])
-                    if last_item_type in bad_neighbors: needs_spacer = True
-                    bad_neighbors_prev = conflicts.get(last_item_type, [])
-                    if req in bad_neighbors_prev: needs_spacer = True
+                    # Strip suffix strictly for conflict check if needed? 
+                    # "drawer_unit_90" -> "drawer_unit". Conflict map keys are standard.
+                    # Drawer unit usually has no conflicts.
+                    req_base = "drawer_unit" if "drawer_unit" in req else req
+                    last_base = "drawer_unit" if "drawer_unit" in str(last_item_type) else last_item_type
+                    
+                    bad_neighbors = conflicts.get(req_base, [])
+                    if last_base in bad_neighbors: needs_spacer = True
+                    bad_neighbors_prev = conflicts.get(last_base, [])
+                    if req_base in bad_neighbors_prev: needs_spacer = True
                 
                 # WINDOW CHECK For TALL items
                 # Pantry, Fridge, FridgeSpacer are Tall (200cm). Window usually starts at 100cm. Collision!
@@ -171,8 +177,11 @@ class WallSolver:
                 
                 # Place Item
                 if current_seg_x + w <= seg_end:
+                    final_type = req
+                    if req == "drawer_unit_90": final_type = "drawer_unit"
+                    
                     all_items.append({
-                        "type": req,
+                        "type": final_type,
                         "x_local": current_seg_x,
                         "width": w,
                         "wall_index": wall.index

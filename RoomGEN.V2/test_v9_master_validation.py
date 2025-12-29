@@ -15,9 +15,11 @@ from generators.asset_factory import AssetFactory
 from exporters.hybrid_exporter import HybridExporter
 from core.schema import CabinetItem, Component
 
+from solvers.layout_solver import LayoutSolver
+
 def run_master_validation():
     print("----------------------------------------------------------------")
-    print("🚀 RoomGEN V2 Phase 9: Master Validation Protocol")
+    print("🚀 RoomGEN V2 Phase 9: Master Validation Protocol (Auto-Layout)")
     print("----------------------------------------------------------------")
     
     # Force new assets
@@ -28,25 +30,24 @@ def run_master_validation():
     walls, corners = RoomParser.parse_polygon(polygon)
     kitchen_walls = walls[:2] # Wall 0 (Left), Wall 1 (Bottom)
     
-    # ADD WINDOWS (Dual Window Verification)
-    # Wall 0: Center Window
+    # ADD WINDOWS (Wall 0: Center Window)
     kitchen_walls[0].features.append({
         "type": "window", "x_start": 90, "width": 120
     })
-    # Wall 1: Center Window - REMOVED per user request
-    # kitchen_walls[1].features.append({
-    #     "type": "window", "x_start": 90, "width": 120
-    # })
+    # Wall 1: Center Window (Re-added per user request)
+    # Wall 1 Usable: 90 (Corner) to 300. Pantry at End (240-300).
+    # Window Space: 90 to 240. Let's put it at 130-220 (Width 90).
+    kitchen_walls[1].features.append({
+        "type": "window", "x_start": 130, "width": 90
+    })
 
-    # ADD UTILITIES (Visualization Test)
-    # Wall 0: Water/Waste for Sink (Approx pos 90-150 range?)
-    # Sink usually centered on window or nearby.
+    # ADD UTILITIES
+    # Wall 0: Water/Waste
     kitchen_walls[0].features.append({"type": "water_point", "x_start": 150, "width": 10}) 
     kitchen_walls[0].features.append({"type": "waste_point", "x_start": 150, "width": 10})
     
-    # Wall 1: Gas for Stove
-    # Stove requested on Wall 1.
-    # kitchen_walls[1].features.append({"type": "gas_point", "x_start": 200, "width": 10})
+    # Wall 1: Gas
+    kitchen_walls[1].features.append({"type": "gas_point", "x_start": 200, "width": 10})
     
     # 2. Nexus (Corner)
     corner_node = None
@@ -59,20 +60,17 @@ def run_master_validation():
     # Reserve Corner (90cm)
     CornerSolver.solve(corner_node, budget="high")
     
-    # ... (Solver Loop) ...
-    # [Code Omitted for Brevity, assuming standard solving follows]
-
-    # Wall 0 Items: Fridge -> TinSpacer -> Pantry -> Sink -> Drawer Unit
-    required_wall_0 = ["fridge", "pantry", "sink", "drawer_unit"]
+    # 3. AUTO-LAYOUT
+    # User Rules: Tall at ends, Logic by utilities.
+    # Required Furniture Pool
+    required_pool = ["fridge", "pantry", "sink", "stove", "dishwasher"]
     
-    # Wall 1 Items: Dishwasher -> Drawer Unit
-    required_wall_1 = ["dishwasher", "drawer_unit"]
-    # To get glass upper, we need a base cabinet that maps to it? Or just manually inject for verification?
-    # UpperCabinetSolver maps base->upper.
-    # We can add mapping 'drawer_unit' -> 'glass_upper'? 
-    # Or just add a dummy base 'glass_base' that maps to it?
-    # Simplest: Update UpperCabinetSolver to map 'drawer_unit' to 'glass_upper'.
+    print("\n[Auto-Layout] Distributing items...")
+    layout_assignments = LayoutSolver.distribute_items(kitchen_walls, required_pool)
     
+    print("Assignments:")
+    for wid, items in layout_assignments.items():
+        print(f"  Wall {wid}: {items}")
 
     detailed_cabinets = []
     exporter = HybridExporter()
@@ -93,9 +91,8 @@ def run_master_validation():
 
     # Solve Loop
     for i, wall in enumerate(kitchen_walls):
-        # Inject specific requirements per wall for testing
-        if i == 0: reqs = required_wall_0
-        else: reqs = required_wall_1
+        # Use Auto-Layout Assignments
+        reqs = layout_assignments.get(wall.index, [])
         
         base_items = WallSolver.solve(wall, required_items=reqs)
         upper_items = UpperCabinetSolver.solve(wall, base_items)
@@ -254,19 +251,66 @@ def run_master_validation():
     floor.visual.face_colors = [220, 220, 220, 100]
     exporter.scene.add_geometry(floor)
     
-    # Windows
+    # Windows - Dynamic Generation
     w_asset = exporter.load_asset("window_frame_v1")
     if w_asset:
-        # Wall 1 Window (Left)
-        T1 = trimesh.transformations.translation_matrix([-5, 150, 150]) 
-        R1 = trimesh.transformations.rotation_matrix(np.pi/2, [0, 1, 0])
-        M1 = trimesh.transformations.concatenate_matrices(T1, R1)
-        for m in w_asset: exporter.scene.add_geometry(m.copy(), transform=M1)
+        for wall in kitchen_walls:
+            # Re-calculate wall geometry
+            wx = wall.p2[0] - wall.p1[0]; wy = wall.p2[1] - wall.p1[1]
+            wall_len = math.sqrt(wx*wx + wy*wy)
+            ux = wx / wall_len; uy = wy / wall_len
+            nx, ny = -uy, ux # Normal pointing IN
             
-        # Wall 2 Window (Bottom) - REMOVED
-        # T2 = trimesh.transformations.translation_matrix([150, 150, -5])
-        # M2 = T2
-        # for m in w_asset: exporter.scene.add_geometry(m.copy(), transform=M2)
+            start_3d = np.array([wall.p1[0], 0, wall.p1[1]])
+            vec_3d = np.array([ux, 0, uy])
+            norm_3d = np.array([nx, 0, ny])
+            
+            # Rotation of wall
+            n_angle = math.degrees(math.atan2(ny, nx))
+            # Window aligns with wall.
+            # Asset orientation: Z-up? We need to check asset.
+            # Existing code used R1 = rotation_matrix(np.pi/2, [0,1,0]) for Wall 0 (Vertical).
+            # Wall 0 Angle: Normal is (1,0) -> 0 deg?
+            # Wall 1 Angle: Normal is (0,1) -> 90 deg?
+            
+            # Hardcoded rotation fix based on wall Index/Direction
+            # Wall 0 (Vertical): Needs 90 deg rotation around Y.
+            # Wall 1 (Horizontal): Needs 0 deg (or 180) rotation around Y.
+            
+            # Calculate Rotation Matrix from Wall Vector
+            angle = math.atan2(wy, wx) # Wall Vector Angle
+            # Wall 0: (0,-300) -> -90 deg.
+            # Wall 1: (300,0) -> 0 deg.
+            
+            # Asset is likely aligned to X-axis?
+            # If Wall 0 requires 90deg, implying Asset X aligns with Wall Z?
+            # Let's trust the math: Rotate around Y by -angle?
+            
+            w_rot = trimesh.transformations.rotation_matrix(-angle, [0, 1, 0])
+            
+            for feat in wall.features:
+                if feat.get('type') == 'window':
+                    # Feature Pos (Start)
+                    fs = feat['x_start']
+                    fw = feat['width']
+                    center_dist = fs + fw/2
+                    
+                    # Global Position of Center
+                    center_pos = start_3d + vec_3d * center_dist
+                    
+                    # Offset for Window Thickness/Position
+                    # Start_3d is Wall Center Line.
+                    # Move slightly outwards (-Normal * 5)?
+                    # Wall 0 Normal (1,0). Outwards is (-1,0). Correct. (-5 X)
+                    # Wall 1 Normal (0,1). Outwards is (0,-1). Correct. (-5 Z)
+                    
+                    final_pos = center_pos - norm_3d * 5
+                    final_pos[1] = 150 # Window Center Height (Standard)
+                    
+                    T = trimesh.transformations.translation_matrix(final_pos)
+                    M = trimesh.transformations.concatenate_matrices(T, w_rot)
+                    
+                    for m in w_asset: exporter.scene.add_geometry(m.copy(), transform=M)
 
     # Cabinets
     for cab in detailed_cabinets:

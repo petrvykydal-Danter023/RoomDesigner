@@ -102,6 +102,50 @@ class UpperCabinetSolver:
         upper_items.sort(key=lambda x: x['x_local'])
         
         # ---------------------------------------------------------
+        # RULE: "Upper cabinets cannot be 2 buffers next to each other"
+        # ---------------------------------------------------------
+        # Strategy: Merge adjacent 'upper_narrow' (buffers) into 'upper_cabinet'.
+        
+        merged_items = []
+        skip_indices = set()
+        
+        for i in range(len(upper_items)):
+            if i in skip_indices: continue
+            
+            item = upper_items[i]
+            
+            # Look ahead for mergeable neighbor
+            if item['type'] == 'upper_narrow':
+                if i + 1 < len(upper_items):
+                    next_item = upper_items[i+1]
+                    # Check Type
+                    if next_item['type'] == 'upper_narrow':
+                        # Check Adjacency
+                        # Tolerance 1cm
+                        dist = next_item['x_local'] - (item['x_local'] + item['width'])
+                        if abs(dist) < 1.0:
+                            # MERGE!
+                            # Create new Combined Cabinet
+                            new_width = item['width'] + next_item['width'] # Should be 60
+                            new_x = item['x_local']
+                            
+                            merged_items.append({
+                                "type": "upper_cabinet", # Upgrade to standard
+                                "x_local": new_x,
+                                "width": new_width,
+                                "wall_index": wall.index,
+                                "linked_to": f"merged_{item.get('linked_to')}_{next_item.get('linked_to')}"
+                            })
+                            
+                            skip_indices.add(i+1)
+                            continue
+            
+            # If no merge happened, keep original
+            merged_items.append(item)
+            
+        upper_items = merged_items
+        
+        # ---------------------------------------------------------
         # RULE: "At least two normal upper cabinets next to each other"
         # ---------------------------------------------------------
         # Corner cabinets don't count.
